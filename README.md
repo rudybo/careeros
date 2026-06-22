@@ -1,63 +1,180 @@
 # CareerOS
 
-An AI-powered career platform that helps professionals find jobs faster. Built as a portfolio project to demonstrate production-grade Python backend development with local LLM integration.
+An AI-powered career platform that helps professionals find jobs faster. Built as a portfolio project to demonstrate full-stack development with local LLM integration — from async Python backend to a reactive React frontend.
 
 ## What it does
 
-CareerOS runs two AI agents that work together:
+CareerOS runs two AI agents that work together on your real CV and real job postings:
 
 1. **Career Strategist** — analyzes a parsed CV and produces a full career report: target roles with match percentage, skill gaps with acquisition roadmaps, and a prioritized action plan
-2. **CV Expert** — takes a parsed CV + a specific job description and optimizes the CV for that exact position: keyword analysis, ATS warnings, section-by-section suggestions, and a rewritten professional summary
+2. **CV Expert** — takes a parsed CV + a specific job description and optimizes the CV for that exact position: keyword analysis, ATS warnings, section-by-section suggestions, rewritten professional summary, and cover letter hints
 
-Both agents run on a local LLM (Ollama + llama3.2) — no external API keys required.
+All processing runs on a local LLM (Ollama + llama3.2) — no external API keys, no data sent to the cloud.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                        FastAPI                           │
-│   /cv  │  /cv/{id}/analysis  │  /applications           │
-└────────┬────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────┐
-│                   Agents Layer                  │
-│  CareerStrategist        CVExpert               │
-│  (chain-of-thought)      (keyword matching)     │
-└────────────────────┬────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│          React Frontend  (Vite · port 5173)         │
+│  Dashboard · CV · Career Analysis · Applications    │
+└────────────────────┬────────────────────────────────┘
+                     │  HTTP / proxy
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│           FastAPI Backend  (Uvicorn · port 8000)    │
+│   /cv  ·  /cv/{id}/analysis  ·  /applications      │
+└────────────────────┬────────────────────────────────┘
                      │
                      ▼
-┌─────────────────────────────────────────────────┐
-│              Ollama (local LLM)                 │
-│              llama3.2 · 3B params · CPU         │
-└─────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────┐
-│           Repositories / SQLAlchemy             │
-│           async · aiosqlite · SQLite            │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                   Agents Layer                      │
+│   CareerStrategist          CVExpert                │
+│   (chain-of-thought)        (keyword matching)      │
+│   + post-processing guardrails on both              │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│           Ollama  ·  llama3.2 · 3B · CPU            │
+└─────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│        SQLAlchemy async  ·  aiosqlite  ·  SQLite    │
+└─────────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
 
-- **Async everywhere** — FastAPI + SQLAlchemy async + BackgroundTasks; long-running LLM calls return 202 immediately, client polls for results
-- **Repository pattern** — data access is fully isolated from business logic; swapping SQLite for PostgreSQL requires touching only the engine config
-- **Post-processing guardrails** — a deterministic correction layer runs after every LLM response to catch hallucinations the 3B model can't reliably avoid (fabricated keyword matches, duplicate roadmap steps, skills already present in the CV flagged as gaps)
+- **Async everywhere** — FastAPI + SQLAlchemy async + BackgroundTasks; long-running LLM calls return `202` immediately, the React frontend polls automatically via TanStack Query
+- **Repository pattern** — data access fully isolated from business logic; swapping SQLite → PostgreSQL touches only the engine config
+- **Post-processing guardrails** — a deterministic correction layer runs after every LLM response to catch what a 3B model can't reliably avoid: fabricated keyword matches, duplicate roadmap steps, gaps that are already in the CV's skill list
 - **Clean layer separation** — models → schemas → repositories → services → agents → endpoints; each layer has a single responsibility
+- **JobApplication as central entity** — the `JobApplication` model links a parsed CV to a specific job opening, enabling the full apply → track → optimize loop
 
 ## Tech Stack
 
+### Backend
 | Layer | Technology |
 |---|---|
 | API | FastAPI 0.115 + Uvicorn |
 | ORM | SQLAlchemy 2.0 async |
 | Database | SQLite via aiosqlite (PostgreSQL-ready) |
-| AI | Ollama 0.4.4 + llama3.2 (3B, local) |
+| AI | Ollama 0.6.2 + llama3.2 (3B, local) |
 | CV parsing | pdfplumber (PDF) + python-docx (DOCX) |
 | Text cleanup | ftfy (unicode normalization) |
 | Validation | Pydantic v2 + pydantic-settings |
-| Testing | pytest-asyncio + httpx (in-memory SQLite) |
+| Testing | pytest-asyncio + httpx (46 tests, in-memory SQLite) |
+
+### Frontend
+| Layer | Technology |
+|---|---|
+| Framework | React 18 + Vite + TypeScript |
+| Styling | Tailwind CSS |
+| Data fetching | TanStack Query (async polling, caching) |
+| Routing | React Router v6 |
+| HTTP | Axios |
+| Icons | Lucide React |
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 18+
+- [Ollama](https://ollama.com) installed and running
+- llama3.2 model: `ollama pull llama3.2`
+
+### Backend
+
+```bash
+git clone https://github.com/rudybo/careeros.git
+
+cd careeros/backend
+python -m venv .venv
+source .venv/bin/activate      # Linux/macOS
+.venv\Scripts\activate         # Windows
+
+pip install -r requirements.txt
+cp .env.example .env
+
+uvicorn app.main:app --reload
+# → http://localhost:8000
+# → http://localhost:8000/docs  (Swagger UI)
+```
+
+### Frontend
+
+```bash
+cd careeros/frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+The Vite dev server proxies all `/api/*` requests to the backend — no CORS configuration needed.
+
+### Running Tests
+
+```bash
+cd backend
+pytest tests/ -v
+# 46 tests · no Ollama required · in-memory SQLite
+```
+
+## UI Walkthrough
+
+| Page | What you can do |
+|---|---|
+| **Dashboard** | Overview of CVs, applications, and best application status |
+| **Curriculum** | Drag-and-drop upload (PDF/DOCX), status polling, list |
+| **CV Detail** | View all parsed data, trigger Career Strategist analysis |
+| **Career Analysis** | Target roles with match %, skill gaps, prioritized roadmap |
+| **Candidature** | Create application by pasting a job description, list all |
+| **Application Detail** | Match score bar, keyword diff (green/red), ATS warnings, section suggestions, optimized summary, cover letter hints, lifecycle status buttons |
+
+## Project Structure
+
+```
+careeros/
+├── backend/
+│   ├── app/
+│   │   ├── agents/
+│   │   │   ├── career_strategist/    # Career analysis agent
+│   │   │   │   ├── agent.py          # Chain-of-thought + guardrails
+│   │   │   │   └── prompt.md
+│   │   │   └── cv_expert/            # CV optimization agent
+│   │   │       ├── agent.py          # Keyword matching + guardrails
+│   │   │       └── prompt.md
+│   │   ├── api/v1/endpoints/
+│   │   │   ├── cv.py
+│   │   │   ├── analysis.py
+│   │   │   └── application.py
+│   │   ├── core/
+│   │   │   ├── config.py             # pydantic-settings
+│   │   │   └── database.py           # Async SQLAlchemy engine
+│   │   ├── models/                   # SQLAlchemy ORM models
+│   │   ├── repositories/             # Data access layer
+│   │   ├── schemas/                  # Pydantic v2 schemas
+│   │   └── services/
+│   │       ├── cv_extractor.py       # PDF/DOCX text extraction
+│   │       └── ollama_service.py     # Ollama client wrapper
+│   └── tests/                        # 46 pytest-asyncio tests
+└── frontend/
+    └── src/
+        ├── api/client.ts             # Axios API layer
+        ├── components/
+        │   ├── Layout.tsx            # Sidebar + routing shell
+        │   └── StatusBadge.tsx       # Color-coded status pills
+        ├── pages/
+        │   ├── Dashboard.tsx
+        │   ├── CVPage.tsx            # Upload + list
+        │   ├── CVDetail.tsx          # Parsed CV + trigger analysis
+        │   ├── AnalysisDetail.tsx    # Career Strategist results
+        │   ├── ApplicationsPage.tsx  # List + create form
+        │   └── ApplicationDetail.tsx # CV Expert results
+        └── types/index.ts            # TypeScript interfaces
+```
 
 ## API Endpoints
 
@@ -65,12 +182,12 @@ Both agents run on a local LLM (Ollama + llama3.2) — no external API keys requ
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/cv/upload` | Upload a PDF or DOCX file |
-| `POST` | `/api/v1/cv/{id}/parse` | Start async CV parsing with Ollama → 202 |
+| `POST` | `/api/v1/cv/upload` | Upload PDF or DOCX |
+| `POST` | `/api/v1/cv/{id}/parse` | Start async CV parsing → 202 |
 | `GET` | `/api/v1/cv/{id}` | Get CV with parsed data |
 | `GET` | `/api/v1/cv/` | List all CVs |
 
-### Career Strategist Agent
+### Career Strategist
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -82,119 +199,22 @@ Both agents run on a local LLM (Ollama + llama3.2) — no external API keys requ
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/applications/` | Create a job application (links CV + JD) |
+| `POST` | `/api/v1/applications/` | Create job application |
 | `POST` | `/api/v1/applications/{id}/analyze` | Start CV optimization → 202 |
 | `PATCH` | `/api/v1/applications/{id}/status` | Update lifecycle status |
 | `GET` | `/api/v1/applications/` | List all applications |
-| `GET` | `/api/v1/applications/{id}` | Get application with full optimization report |
+| `GET` | `/api/v1/applications/{id}` | Get application + optimization report |
 
-**Application status lifecycle:** `draft` → `analyzing` → `ready` → `applied` → `interview` → `offer` / `rejected`
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.12+
-- [Ollama](https://ollama.com) installed and running
-- llama3.2 model pulled: `ollama pull llama3.2`
-
-### Setup
-
-```bash
-git clone https://github.com/rudybo/careeros.git
-cd careeros/backend
-
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate      # Linux/macOS
-.venv\Scripts\activate         # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-
-# Start the server
-uvicorn app.main:app --reload
-```
-
-The API will be available at `http://localhost:8000`.  
-Interactive docs (Swagger UI): `http://localhost:8000/docs`
-
-### Running Tests
-
-```bash
-cd backend
-pytest tests/ -v
-```
-
-Tests run against an in-memory SQLite database with background tasks stubbed — no Ollama connection required. 46 tests covering API integration, agent guardrails, and CV extraction.
-
-## Project Structure
-
-```
-backend/
-├── app/
-│   ├── agents/
-│   │   ├── career_strategist/    # Career analysis agent
-│   │   │   ├── agent.py          # Chain-of-thought analysis + guardrails
-│   │   │   └── prompt.md         # System prompt
-│   │   └── cv_expert/            # CV optimization agent
-│   │       ├── agent.py          # Keyword matching + guardrails
-│   │       └── prompt.md         # System prompt
-│   ├── api/v1/endpoints/
-│   │   ├── cv.py                 # CV upload and parsing
-│   │   ├── analysis.py           # Career Strategist endpoints
-│   │   └── application.py        # CV Expert + job tracking
-│   ├── core/
-│   │   ├── config.py             # pydantic-settings configuration
-│   │   └── database.py           # Async SQLAlchemy engine
-│   ├── models/                   # SQLAlchemy ORM models
-│   ├── repositories/             # Data access layer
-│   ├── schemas/                  # Pydantic v2 schemas
-│   └── services/
-│       ├── cv_extractor.py       # PDF/DOCX text extraction
-│       └── ollama_service.py     # Ollama client wrapper
-└── tests/                        # 46 pytest-asyncio tests
-```
-
-## Example Workflow
-
-```bash
-# 1. Upload your CV
-curl -X POST http://localhost:8000/api/v1/cv/upload \
-  -F "file=@my_cv.pdf"
-# → {"id": 1, "status": "pending"}
-
-# 2. Parse the CV with Ollama
-curl -X POST http://localhost:8000/api/v1/cv/1/parse
-# → 202 {"status": "parsing"}
-
-# 3. Poll until parsed
-curl http://localhost:8000/api/v1/cv/1
-# → {"status": "parsed", "parsed_data": {...}}
-
-# 4. Get career strategy
-curl -X POST http://localhost:8000/api/v1/cv/1/analyze
-# → 202, poll GET /api/v1/cv/1/analysis/1 until status=completed
-
-# 5. Optimize CV for a specific job
-curl -X POST http://localhost:8000/api/v1/applications/ \
-  -H "Content-Type: application/json" \
-  -d '{"cv_id": 1, "company": "Stripe", "role": "Backend Engineer", "job_description": "..."}'
-# → {"id": 1, "status": "draft"}
-
-curl -X POST http://localhost:8000/api/v1/applications/1/analyze
-# → 202, poll GET /api/v1/applications/1 until status=ready
-# → optimization.match_score, missing_keywords, section_suggestions, ...
-```
+**Status lifecycle:** `draft` → `analyzing` → `ready` → `applied` → `interview` → `offer` / `rejected`
 
 ## Roadmap
 
-- [ ] React frontend dashboard
+- [x] CV upload and async parsing (PDF + DOCX)
+- [x] Career Strategist agent (target roles, skill gaps, roadmap)
+- [x] CV Expert agent + Job Application tracking
+- [x] React frontend (dashboard, CV detail, analysis, applications)
 - [ ] Cover letter generation agent
 - [ ] Interview preparation agent (Q&A from JD)
-- [ ] Application analytics (match score trends over time)
-- [ ] Docker Compose setup
+- [ ] Application analytics (match score trends)
+- [ ] Docker Compose
 - [ ] PostgreSQL migration
