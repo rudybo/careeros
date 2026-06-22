@@ -1,0 +1,66 @@
+import json
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.application import JobApplication
+
+
+class ApplicationRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, cv_id: int, company: str, role: str, job_description: str) -> JobApplication:
+        app = JobApplication(
+            cv_id=cv_id,
+            company=company,
+            role=role,
+            job_description=job_description,
+            status="draft",
+        )
+        self._session.add(app)
+        await self._session.commit()
+        await self._session.refresh(app)
+        return app
+
+    async def update_status(self, app_id: int, status: str) -> JobApplication | None:
+        app = await self.get_by_id(app_id)
+        if app is None:
+            return None
+        app.status = status
+        if status == "applied":
+            app.applied_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(app)
+        return app
+
+    async def update_optimization(self, app_id: int, data: dict) -> JobApplication | None:
+        app = await self.get_by_id(app_id)
+        if app is None:
+            return None
+        app.optimization_data = json.dumps(data, ensure_ascii=False)
+        app.status = "ready"
+        await self._session.commit()
+        await self._session.refresh(app)
+        return app
+
+    async def get_by_id(self, app_id: int) -> JobApplication | None:
+        result = await self._session.execute(
+            select(JobApplication).where(JobApplication.id == app_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_all_by_cv(self, cv_id: int) -> list[JobApplication]:
+        result = await self._session.execute(
+            select(JobApplication)
+            .where(JobApplication.cv_id == cv_id)
+            .order_by(JobApplication.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def get_all(self) -> list[JobApplication]:
+        result = await self._session.execute(
+            select(JobApplication).order_by(JobApplication.created_at.desc())
+        )
+        return list(result.scalars().all())

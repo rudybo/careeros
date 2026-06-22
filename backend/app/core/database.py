@@ -27,6 +27,7 @@ async def get_db() -> AsyncSession:
 async def init_db() -> None:
     # Import all models so SQLAlchemy registers them before create_all
     import app.models.analysis  # noqa: F401
+    import app.models.application  # noqa: F401
     import app.models.cv  # noqa: F401
 
     async with engine.begin() as conn:
