@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
+from app.repositories.application_repository import ApplicationRepository
 from app.repositories.cv_repository import CVRepository
 from app.schemas.cv import CVDetailResponse, CVUploadResponse, ParsedCV
 from app.services.cv_extractor import CVExtractionError, UnsupportedFileTypeError, extract_text
@@ -93,6 +94,22 @@ async def get_cv(cv_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CV non trovato.")
 
     return _build_detail_response(cv)
+
+
+@router.delete("/{cv_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cv(cv_id: int, db: AsyncSession = Depends(get_db)):
+    repo = CVRepository(db)
+    cv = await repo.get_by_id(cv_id)
+    if cv is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CV non trovato.")
+    # Cascade: remove linked applications first
+    app_repo = ApplicationRepository(db)
+    n = await app_repo.delete_by_cv_id(cv_id)
+    if n:
+        logger.info("Cascade delete: %d candidature eliminate per cv_id=%d", n, cv_id)
+    await repo.delete(cv_id)
+    logger.info("CV eliminato: id=%d", cv_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/", response_model=list[CVUploadResponse])

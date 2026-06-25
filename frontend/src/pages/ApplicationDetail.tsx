@@ -1,8 +1,13 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchApplication, updateApplicationStatus } from '../api/client'
+import { fetchApplication, updateApplicationStatus, startCoverLetter } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
-import { ArrowLeftIcon, CheckCircleIcon, XCircleIcon, AlertTriangleIcon, FileTextIcon, MailIcon } from 'lucide-react'
+import AgentBubble from '../components/AgentBubble'
+import {
+  ArrowLeftIcon, CheckCircleIcon, XCircleIcon, AlertTriangleIcon,
+  FileTextIcon, MailIcon, SparklesIcon, CopyIcon, CheckIcon, Loader2Icon,
+} from 'lucide-react'
 import type { JobApplication } from '../types'
 
 const STATUS_FLOW: Array<{ value: JobApplication['status']; label: string }> = [
@@ -24,6 +29,24 @@ function MatchBar({ score }: { score: number }) {
   )
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
+    >
+      {copied ? <CheckIcon size={13} className="text-green-500" /> : <CopyIcon size={13} />}
+      {copied ? 'Copiato!' : 'Copia lettera'}
+    </button>
+  )
+}
+
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>()
   const appId = Number(id)
@@ -32,7 +55,13 @@ export default function ApplicationDetail() {
   const { data: app } = useQuery({
     queryKey: ['application', appId],
     queryFn: () => fetchApplication(appId),
-    refetchInterval: (q) => q.state.data?.status === 'analyzing' ? 2000 : false,
+    refetchInterval: (q) => {
+      const d = q.state.data
+      if (!d) return false
+      if (d.status === 'analyzing') return 2000
+      if (d.cover_letter_status === 'generating') return 2000
+      return false
+    },
   })
 
   const updateStatus = useMutation({
@@ -40,9 +69,24 @@ export default function ApplicationDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['application', appId] }),
   })
 
+  const generateLetter = useMutation({
+    mutationFn: () => startCoverLetter(appId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['application', appId] }),
+  })
+
   if (!app) return <div className="p-8 text-gray-400">Caricamento...</div>
 
   const opt = app.optimization
+  const cl = app.cover_letter
+  const clStatus = app.cover_letter_status
+
+  const canGenerateLetter = ['ready', 'applied', 'interview', 'offer'].includes(app.status)
+
+  const bubble = clStatus === 'generating'
+    ? { name: 'Clio' as const, active: true, message: 'Sto scrivendo la tua lettera di presentazione su misura per questa offerta...' }
+    : app.status === 'analyzing'
+    ? { name: 'Vera' as const, active: true, message: 'Sto ottimizzando il tuo CV per questa offerta e calcolo il match ATS...' }
+    : { name: 'Vera' as const, active: false, message: 'Sono Vera. Ottimizzo il tuo CV per questa posizione; Clio prepara la cover letter su misura.' }
 
   return (
     <div className="p-8 max-w-4xl">
@@ -58,6 +102,8 @@ export default function ApplicationDetail() {
         </div>
         <StatusBadge status={app.status} />
       </div>
+
+      <AgentBubble name={bubble.name} active={bubble.active} message={bubble.message} />
 
       {/* Status flow buttons */}
       {['ready', 'applied', 'interview'].includes(app.status) && (
@@ -79,11 +125,6 @@ export default function ApplicationDetail() {
         </div>
       )}
 
-      {app.status === 'analyzing' && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 mb-6">
-          Il CV Expert sta analizzando il tuo profilo vs la job description... La pagina si aggiorna automaticamente.
-        </div>
-      )}
 
       {opt && (
         <div className="space-y-6">
@@ -191,6 +232,79 @@ export default function ApplicationDetail() {
               </ol>
             </div>
           )}
+
+          {/* ── Cover Letter Generator ── */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-gray-400">
+                <SparklesIcon size={14} className="text-purple-500" /> Lettera di presentazione
+              </h2>
+              {cl && <CopyButton text={cl.full_text} />}
+            </div>
+
+            {/* State: idle — can generate */}
+            {clStatus === 'idle' && canGenerateLetter && (
+              <div className="flex flex-col items-start gap-3">
+                <p className="text-sm text-gray-500">
+                  Genera una lettera di presentazione personalizzata basata sul tuo CV e questa job description.
+                </p>
+                <button
+                  onClick={() => generateLetter.mutate()}
+                  disabled={generateLetter.isPending}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  <SparklesIcon size={14} />
+                  Genera lettera
+                </button>
+              </div>
+            )}
+
+            {/* State: generating */}
+            {clStatus === 'generating' && (
+              <div className="flex items-center gap-3 text-sm text-purple-700 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <Loader2Icon size={16} className="animate-spin shrink-0" />
+                Sto generando la tua lettera personalizzata... La pagina si aggiorna automaticamente.
+              </div>
+            )}
+
+            {/* State: ready — show letter */}
+            {clStatus === 'ready' && cl && (
+              <div className="space-y-3">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1 font-medium">Oggetto email</p>
+                  <p className="text-sm font-medium text-gray-800">{cl.subject}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{cl.full_text}</p>
+                </div>
+                <button
+                  onClick={() => generateLetter.mutate()}
+                  disabled={generateLetter.isPending}
+                  className="text-xs text-gray-400 hover:text-purple-600 transition-colors"
+                >
+                  Rigenera lettera
+                </button>
+              </div>
+            )}
+
+            {/* State: error */}
+            {clStatus === 'error' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                  <XCircleIcon size={14} /> Generazione fallita. Riprova.
+                </div>
+                {canGenerateLetter && (
+                  <button
+                    onClick={() => generateLetter.mutate()}
+                    disabled={generateLetter.isPending}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    <SparklesIcon size={14} /> Riprova
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Job description (collapsed) */}
           <details className="bg-white rounded-xl border border-gray-200">

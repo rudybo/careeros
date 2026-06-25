@@ -1,7 +1,8 @@
 const config: Record<string, { label: string; className: string }> = {
   pending:   { label: 'In attesa',   className: 'bg-gray-100 text-gray-600' },
   parsing:   { label: 'Parsing...',  className: 'bg-yellow-100 text-yellow-700 animate-pulse' },
-  analyzing: { label: 'Analisi...', className: 'bg-blue-100 text-blue-700 animate-pulse' },
+  analyzing:  { label: 'Analisi...',   className: 'bg-blue-100 text-blue-700 animate-pulse' },
+  generating: { label: 'Generazione...', className: 'bg-purple-100 text-purple-700 animate-pulse' },
   parsed:    { label: 'Pronto',      className: 'bg-green-100 text-green-700' },
   completed: { label: 'Completato',  className: 'bg-green-100 text-green-700' },
   ready:     { label: 'Pronto',      className: 'bg-green-100 text-green-700' },

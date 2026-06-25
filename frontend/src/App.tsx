@@ -6,6 +6,7 @@ import CVDetail from './pages/CVDetail'
 import AnalysisDetail from './pages/AnalysisDetail'
 import ApplicationsPage from './pages/ApplicationsPage'
 import ApplicationDetail from './pages/ApplicationDetail'
+import MarketPage from './pages/MarketPage'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/cv/:id/analysis/:analysisId"        element={<AnalysisDetail />} />
         <Route path="/applications"                       element={<ApplicationsPage />} />
         <Route path="/applications/:id"                   element={<ApplicationDetail />} />
+        <Route path="/market"                             element={<MarketPage />} />
       </Route>
     </Routes>
   )

@@ -3,7 +3,7 @@ import logging
 import re
 from pathlib import Path
 
-import ollama
+from app.core.llm import chat, LLMError
 
 from app.core.config import settings
 from app.schemas.cv import ParsedCV
@@ -85,7 +85,6 @@ def _apply_guardrails(result: dict, cv: ParsedCV, job_description: str) -> dict:
 
 
 async def analyze(cv: ParsedCV, job_description: str) -> dict:
-    client = ollama.AsyncClient(host=settings.ollama_base_url)
     cv_context = _format_cv_for_expert(cv)
 
     logger.info("CV Expert: avvio analisi per %s — JD: %d chars", cv.full_name, len(job_description))
@@ -96,18 +95,16 @@ async def analyze(cv: ParsedCV, job_description: str) -> dict:
     )
 
     try:
-        response = await client.chat(
-            model=settings.ollama_model,
+        raw = await chat(
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
             ],
-            options={"temperature": 0.1, "num_predict": 2048},
+            temperature=0.1,
+            max_tokens=2048,
         )
-    except Exception as e:
-        raise CVExpertError(f"Ollama non raggiungibile: {e}") from e
-
-    raw = response.message.content.strip()
+    except LLMError as e:
+        raise CVExpertError(str(e)) from e
 
     try:
         if raw.startswith("```"):

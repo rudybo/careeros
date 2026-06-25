@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { uploadCV, parseCV, fetchCVList } from '../api/client'
+import { uploadCV, parseCV, fetchCVList, deleteCV } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
-import { UploadCloudIcon, FileTextIcon, ChevronRightIcon } from 'lucide-react'
+import { UploadCloudIcon, FileTextIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react'
 
 export default function CVPage() {
   const qc = useQueryClient()
@@ -17,6 +17,14 @@ export default function CVPage() {
     refetchInterval: (query) => {
       const data = query.state.data ?? []
       return data.some(c => c.status === 'parsing') ? 2000 : false
+    },
+  })
+
+  const remove = useMutation({
+    mutationFn: (cvId: number) => deleteCV(cvId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cvs'] })
+      qc.invalidateQueries({ queryKey: ['applications'] })
     },
   })
 
@@ -102,22 +110,34 @@ export default function CVPage() {
         ) : (
           <ul className="divide-y divide-gray-100">
             {cvs.map(cv => (
-              <li key={cv.id}>
-                <Link to={`/cv/${cv.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50">
-                  <div className="flex items-center gap-3">
-                    <FileTextIcon size={18} className="text-gray-400" />
-                    <div>
-                      <div className="text-sm font-medium text-gray-800">{cv.filename}</div>
-                      <div className="text-xs text-gray-400">
-                        {new Date(cv.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      </div>
+              <li key={cv.id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50">
+                <Link to={`/cv/${cv.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                  <FileTextIcon size={18} className="text-gray-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-800 truncate">{cv.filename}</div>
+                    <div className="text-xs text-gray-400">
+                      {new Date(cv.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={cv.status} />
-                    <ChevronRightIcon size={16} className="text-gray-300" />
-                  </div>
                 </Link>
+                <div className="flex items-center gap-3 ml-4 shrink-0">
+                  <StatusBadge status={cv.status} />
+                  <Link to={`/cv/${cv.id}`}>
+                    <ChevronRightIcon size={16} className="text-gray-300" />
+                  </Link>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Eliminare "${cv.filename}"?\n\nAttenzione: tutte le candidature collegate a questo CV verranno eliminate.`)) {
+                        remove.mutate(cv.id)
+                      }
+                    }}
+                    disabled={remove.isPending}
+                    className="p-1 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
+                    title="Elimina CV"
+                  >
+                    <Trash2Icon size={15} />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

@@ -37,6 +37,14 @@ class CVRepository:
         result = await self._session.execute(select(CV).where(CV.id == cv_id))
         return result.scalar_one_or_none()
 
+    async def delete(self, cv_id: int) -> bool:
+        cv = await self.get_by_id(cv_id)
+        if cv is None:
+            return False
+        await self._session.delete(cv)
+        await self._session.commit()
+        return True
+
     async def get_all(self) -> list[CV]:
         result = await self._session.execute(select(CV).order_by(CV.created_at.desc()))
         return list(result.scalars().all())

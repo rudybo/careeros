@@ -21,6 +21,12 @@ build/
 # Uploads
 backend/uploads/
 
+# Gmail OAuth - sensitive, never commit
+backend/credentials.json
+backend/credentials.json_old
+backend/token.json
+backend/check_encoding.py
+
 # IDE & tools
 .vscode/
 .idea/

@@ -4,12 +4,15 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.cover_letter import agent as cover_letter_agent
+from app.agents.cover_letter.agent import CoverLetterError
 from app.agents.cv_expert import agent as cv_expert
 from app.agents.cv_expert.agent import CVExpertError
 from app.core.database import AsyncSessionLocal, get_db
 from app.repositories.application_repository import ApplicationRepository
 from app.repositories.cv_repository import CVRepository
 from app.schemas.application import (
+    CoverLetter,
     CVOptimization,
     JobApplicationCreate,
     JobApplicationDetailResponse,
@@ -36,10 +39,29 @@ async def _run_cv_optimization(app_id: int, cv_parsed_data: dict, job_descriptio
             logger.error("CV Expert fallito: application_id=%d error=%s", app_id, e, exc_info=True)
 
 
+async def _run_cover_letter(app_id: int, cv_parsed_data: dict, company: str, role: str, job_description: str, optimization_data: dict | None) -> None:
+    async with AsyncSessionLocal() as session:
+        repo = ApplicationRepository(session)
+        try:
+            parsed_cv = ParsedCV(**cv_parsed_data)
+            optimization = CVOptimization(**optimization_data) if optimization_data else None
+            result = await cover_letter_agent.generate(parsed_cv, company, role, job_description, optimization)
+            await repo.update_cover_letter(app_id, result)
+            logger.info("Cover Letter completata: application_id=%d", app_id)
+        except Exception as e:
+            await repo.set_cover_letter_status(app_id, "error")
+            logger.error("Cover Letter fallita: application_id=%d error=%s", app_id, e, exc_info=True)
+
+
 def _build_detail(record) -> JobApplicationDetailResponse:
     optimization = None
     if record.optimization_data:
         optimization = CVOptimization(**json.loads(record.optimization_data))
+
+    cover_letter = None
+    if record.cover_letter:
+        cover_letter = CoverLetter(**json.loads(record.cover_letter))
+
     return JobApplicationDetailResponse(
         id=record.id,
         cv_id=record.cv_id,
@@ -48,6 +70,8 @@ def _build_detail(record) -> JobApplicationDetailResponse:
         job_description=record.job_description,
         status=record.status,
         optimization=optimization,
+        cover_letter=cover_letter,
+        cover_letter_status=record.cover_letter_status or "idle",
         applied_at=record.applied_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -103,6 +127,50 @@ async def analyze_application(
         "application_id": app_id,
         "status": "analyzing",
         "message": "Analisi CV avviata. Usa GET /applications/{id} per monitorare lo stato.",
+    }
+
+
+@router.post("/{app_id}/cover-letter", status_code=status.HTTP_202_ACCEPTED)
+async def generate_cover_letter(
+    app_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = ApplicationRepository(db)
+    record = await repo.get_by_id(app_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidatura non trovata.")
+    if record.status not in ("ready", "applied", "interview", "offer"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La candidatura deve avere un'analisi completata prima di generare la lettera.",
+        )
+    if record.cover_letter_status == "generating":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Generazione lettera già in corso.")
+
+    cv_repo = CVRepository(db)
+    cv = await cv_repo.get_by_id(record.cv_id)
+    if cv is None or not cv.parsed_data:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CV non parsato.")
+
+    await repo.set_cover_letter_status(app_id, "generating")
+    cv_parsed_data = json.loads(cv.parsed_data)
+    optimization_data = json.loads(record.optimization_data) if record.optimization_data else None
+
+    background_tasks.add_task(
+        _run_cover_letter,
+        app_id,
+        cv_parsed_data,
+        record.company,
+        record.role,
+        record.job_description,
+        optimization_data,
+    )
+
+    return {
+        "application_id": app_id,
+        "cover_letter_status": "generating",
+        "message": "Generazione lettera avviata. Usa GET /applications/{id} per monitorare lo stato.",
     }
 
 

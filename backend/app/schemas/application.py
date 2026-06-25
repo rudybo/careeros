@@ -43,6 +43,11 @@ class JobApplicationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CoverLetter(BaseModel):
+    subject: str
+    full_text: str
+
+
 class JobApplicationDetailResponse(BaseModel):
     id: int
     cv_id: int
@@ -51,6 +56,8 @@ class JobApplicationDetailResponse(BaseModel):
     job_description: str
     status: str
     optimization: CVOptimization | None
+    cover_letter: CoverLetter | None
+    cover_letter_status: str
     applied_at: datetime | None
     created_at: datetime
     updated_at: datetime

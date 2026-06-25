@@ -8,8 +8,17 @@ from app.agents.career_strategist import agent as career_strategist
 from app.agents.career_strategist.agent import CareerStrategistError
 from app.core.database import AsyncSessionLocal, get_db
 from app.repositories.analysis_repository import AnalysisRepository
+from app.repositories.ats_repository import AtsKeywordRepository
 from app.repositories.cv_repository import CVRepository
-from app.schemas.analysis import CareerAnalysis, CareerAnalysisResponse
+from app.repositories.roadmap_repository import RoadmapRepository
+from app.schemas.analysis import (
+    AtsKeywordItemResponse,
+    AtsKeywordItemUpdate,
+    CareerAnalysis,
+    CareerAnalysisResponse,
+    RoadmapItemResponse,
+    RoadmapItemUpdate,
+)
 from app.schemas.cv import ParsedCV
 
 logger = logging.getLogger(__name__)
@@ -17,14 +26,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cv", tags=["Analysis"])
 
 
-async def _run_analysis(analysis_id: int, cv_parsed_data: dict) -> None:
+async def _run_analysis(analysis_id: int, cv_id: int, cv_parsed_data: dict) -> None:
     async with AsyncSessionLocal() as session:
         repo = AnalysisRepository(session)
+        roadmap_repo = RoadmapRepository(session)
+        ats_repo = AtsKeywordRepository(session)
         try:
             parsed_cv = ParsedCV(**cv_parsed_data)
-            result = await career_strategist.analyze(parsed_cv)
+            # Le attività fatte/annullate e le keyword già gestite informano Minerva
+            completed, dismissed = await roadmap_repo.get_done_and_dismissed(cv_id)
+            handled_ats = await ats_repo.get_handled(cv_id)
+            result = await career_strategist.analyze(parsed_cv, completed, dismissed, handled_ats)
             await repo.update_analysis_data(analysis_id, result)
-            logger.info("Analisi completata: analysis_id=%d", analysis_id)
+            # Aggiunge i nuovi step/keyword alle checklist persistenti del CV
+            added = await roadmap_repo.merge_steps(cv_id, result.get("roadmap", []))
+            added_ats = await ats_repo.merge_keywords(cv_id, result.get("ats_keywords", []))
+            logger.info("Analisi completata: analysis_id=%d, +%d attività, +%d keyword ATS",
+                        analysis_id, added, added_ats)
         except Exception as e:
             await repo.update_status(analysis_id, "error")
             logger.error("Analisi fallita: analysis_id=%d error=%s", analysis_id, e, exc_info=True)
@@ -67,7 +85,7 @@ async def start_analysis(
     await analysis_repo.update_status(record.id, "analyzing")
 
     cv_parsed_data = json.loads(cv.parsed_data)
-    background_tasks.add_task(_run_analysis, record.id, cv_parsed_data)
+    background_tasks.add_task(_run_analysis, record.id, cv_id, cv_parsed_data)
 
     logger.info("Analisi avviata in background: cv_id=%d analysis_id=%d", cv_id, record.id)
     return {
@@ -94,3 +112,68 @@ async def list_analyses(cv_id: int, db: AsyncSession = Depends(get_db)):
     repo = AnalysisRepository(db)
     records = await repo.get_all_by_cv(cv_id)
     return [_build_response(r) for r in records]
+
+
+@router.get("/{cv_id}/roadmap", response_model=list[RoadmapItemResponse])
+async def get_roadmap(cv_id: int, db: AsyncSession = Depends(get_db)):
+    """Checklist persistente del CV. Se vuota ma esiste un'analisi con roadmap,
+    la popola al volo (backfill per analisi generate prima della feature)."""
+    repo = RoadmapRepository(db)
+    items = await repo.get_by_cv(cv_id)
+    if not items:
+        analysis_repo = AnalysisRepository(db)
+        latest = await analysis_repo.get_latest_by_cv(cv_id)
+        if latest and latest.analysis_data:
+            roadmap = json.loads(latest.analysis_data).get("roadmap", [])
+            if roadmap:
+                await repo.merge_steps(cv_id, roadmap)
+                items = await repo.get_by_cv(cv_id)
+    return items
+
+
+@router.patch("/{cv_id}/roadmap/{item_id}", response_model=RoadmapItemResponse)
+async def update_roadmap_item(
+    cv_id: int,
+    item_id: int,
+    body: RoadmapItemUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    if body.status not in {"todo", "done", "dismissed"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stato non valido.")
+    repo = RoadmapRepository(db)
+    item = await repo.set_status(item_id, body.status)
+    if item is None or item.cv_id != cv_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attività non trovata.")
+    return item
+
+
+@router.get("/{cv_id}/ats-keywords", response_model=list[AtsKeywordItemResponse])
+async def get_ats_keywords(cv_id: int, db: AsyncSession = Depends(get_db)):
+    """Checklist persistente delle keyword ATS. Backfill dall'ultima analisi se vuota."""
+    repo = AtsKeywordRepository(db)
+    items = await repo.get_by_cv(cv_id)
+    if not items:
+        analysis_repo = AnalysisRepository(db)
+        latest = await analysis_repo.get_latest_by_cv(cv_id)
+        if latest and latest.analysis_data:
+            keywords = json.loads(latest.analysis_data).get("ats_keywords", [])
+            if keywords:
+                await repo.merge_keywords(cv_id, keywords)
+                items = await repo.get_by_cv(cv_id)
+    return items
+
+
+@router.patch("/{cv_id}/ats-keywords/{item_id}", response_model=AtsKeywordItemResponse)
+async def update_ats_keyword(
+    cv_id: int,
+    item_id: int,
+    body: AtsKeywordItemUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    if body.status not in {"todo", "added", "ignored", "gap"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stato non valido.")
+    repo = AtsKeywordRepository(db)
+    item = await repo.set_status(item_id, body.status)
+    if item is None or item.cv_id != cv_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Keyword non trovata.")
+    return item

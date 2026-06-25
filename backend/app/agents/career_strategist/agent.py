@@ -3,7 +3,7 @@ import logging
 import re
 from pathlib import Path
 
-import ollama
+from app.core.llm import chat, LLMError
 
 from app.core.config import settings
 from app.schemas.cv import ParsedCV
@@ -156,25 +156,47 @@ def _format_cv_context(cv: ParsedCV) -> str:
     return "\n".join(lines)
 
 
-async def analyze(cv: ParsedCV) -> dict:
-    client = ollama.AsyncClient(host=settings.ollama_base_url)
+async def analyze(
+    cv: ParsedCV,
+    completed_actions: list[str] | None = None,
+    dismissed_actions: list[str] | None = None,
+    handled_ats: list[str] | None = None,
+) -> dict:
     context = _format_cv_context(cv)
 
     logger.info("Career Strategist: avvio analisi per %s", cv.full_name)
 
+    user_content = f"Professional profile to analyze:\n\n{context}"
+    extra: list[str] = []
+    if completed_actions:
+        extra.append(
+            "ACTIONS THE CANDIDATE HAS ALREADY COMPLETED — do NOT propose these again, build on top of them:\n"
+            + "\n".join(f"- {a}" for a in completed_actions)
+        )
+    if dismissed_actions:
+        extra.append(
+            "ACTIONS THE CANDIDATE HAS REFUSED and will NEVER do — you MUST NOT propose these or any equivalent/paraphrased version:\n"
+            + "\n".join(f"- {a}" for a in dismissed_actions)
+        )
+    if handled_ats:
+        extra.append(
+            "ATS KEYWORDS ALREADY HANDLED (added to CV or marked as already-present) — do NOT list these in ats_keywords again:\n"
+            + "\n".join(f"- {k}" for k in handled_ats)
+        )
+    if extra:
+        user_content += "\n\n" + "\n\n".join(extra)
+
     try:
-        response = await client.chat(
-            model=settings.ollama_model,
+        raw = await chat(
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f"Professional profile to analyze:\n\n{context}"},
+                {"role": "user", "content": user_content},
             ],
-            options={"temperature": 0.2, "num_predict": 2048},
+            temperature=0.2,
+            max_tokens=4096,
         )
-    except Exception as e:
-        raise CareerStrategistError(f"Ollama non raggiungibile: {e}") from e
-
-    raw = response.message.content.strip()
+    except LLMError as e:
+        raise CareerStrategistError(str(e)) from e
 
     try:
         if raw.startswith("```"):

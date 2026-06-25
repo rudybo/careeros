@@ -38,7 +38,8 @@ async def client(db_session):
     # not the async side-effect of Ollama calls.
     with patch("app.api.v1.endpoints.cv._run_parsing", new_callable=AsyncMock), \
          patch("app.api.v1.endpoints.analysis._run_analysis", new_callable=AsyncMock), \
-         patch("app.api.v1.endpoints.application._run_cv_optimization", new_callable=AsyncMock):
+         patch("app.api.v1.endpoints.application._run_cv_optimization", new_callable=AsyncMock), \
+         patch("app.api.v1.endpoints.application._run_cover_letter", new_callable=AsyncMock):
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             yield ac

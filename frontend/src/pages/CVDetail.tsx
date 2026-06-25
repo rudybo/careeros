@@ -31,6 +31,19 @@ export default function CVDetail() {
     },
   })
 
+  // Ultima analisi (per id decrescente) e ultima completata
+  const sorted = [...analyses].sort((a, b) => b.id - a.id)
+  const latest = sorted[0]
+  const latestCompleted = sorted.find(a => a.status === 'completed')
+  const hasAnalysis = sorted.length > 0
+
+  const handleAnalyze = () => {
+    if (hasAnalysis && !window.confirm(
+      'Generare una NUOVA analisi?\n\nL\'LLM produrrà un risultato diverso da quello attuale. L\'analisi precedente resterà nello storico.'
+    )) return
+    analyze.mutate()
+  }
+
   if (isLoading) return <div className="p-8 text-gray-400">Caricamento...</div>
   if (!cv) return <div className="p-8 text-red-500">CV non trovato</div>
 
@@ -55,12 +68,16 @@ export default function CVDetail() {
           {cv.status === 'parsed' && (
             <div className="flex gap-2">
               <button
-                onClick={() => analyze.mutate()}
+                onClick={handleAnalyze}
                 disabled={analyze.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-60 ${
+                  hasAnalysis
+                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
                 <SparklesIcon size={15} />
-                {analyze.isPending ? 'Avvio...' : 'Analizza carriera'}
+                {analyze.isPending ? 'Avvio...' : hasAnalysis ? 'Ricalcola' : 'Analizza carriera'}
               </button>
               <Link
                 to="/applications"
@@ -82,6 +99,41 @@ export default function CVDetail() {
 
       {parsed && (
         <div className="space-y-6">
+          {/* Piano di carriera salvato — sempre visibile in cima */}
+          {latestCompleted?.analysis && (
+            <div className="bg-gradient-to-br from-violet-50 to-blue-50 rounded-xl border border-violet-200 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <SparklesIcon size={16} className="text-violet-600" />
+                    Il tuo piano di carriera
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {latestCompleted.analysis.roadmap.length} attività da completare
+                    {' · '}{latestCompleted.analysis.skill_gaps.length} skill gap
+                    {' · '}generato il {new Date(latestCompleted.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+                <Link
+                  to={`/cv/${cvId}/analysis/${latestCompleted.id}`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 shrink-0"
+                >
+                  Vedi attività
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* Analisi in corso */}
+          {latest?.status === 'analyzing' && (
+            <Link
+              to={`/cv/${cvId}/analysis/${latest.id}`}
+              className="block bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700 hover:bg-blue-100"
+            >
+              Minerva sta elaborando una nuova analisi... clicca per seguirne lo stato.
+            </Link>
+          )}
+
           {/* Summary */}
           {parsed.summary && (
             <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -149,7 +201,7 @@ export default function CVDetail() {
           {/* Past analyses */}
           {analyses.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">Analisi carriera</h2>
+              <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">Storico analisi</h2>
               <ul className="space-y-2">
                 {analyses.map(a => (
                   <li key={a.id}>
