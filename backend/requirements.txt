@@ -14,6 +14,15 @@ python-multipart==0.0.17
 # AI
 ollama==0.6.2
 
+# Scheduler (ricerca automatica Iris)
+APScheduler==3.11.2
+
+# Gmail (bozza cover letter - Clio)
+google-api-python-client==2.197.0
+google-auth==2.55.0
+google-auth-oauthlib==1.4.0
+google-auth-httplib2==0.4.0
+
 # Text normalization
 ftfy==6.3.1
 
