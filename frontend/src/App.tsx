@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import CVPage from './pages/CVPage'
+import CVHistory from './pages/CVHistory'
 import CVDetail from './pages/CVDetail'
 import AnalysisDetail from './pages/AnalysisDetail'
 import ApplicationsPage from './pages/ApplicationsPage'
@@ -15,6 +16,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/"                                   element={<Dashboard />} />
         <Route path="/cv"                                 element={<CVPage />} />
+        <Route path="/cv/storico"                         element={<CVHistory />} />
         <Route path="/cv/:id"                             element={<CVDetail />} />
         <Route path="/cv/:id/analysis/:analysisId"        element={<AnalysisDetail />} />
         <Route path="/attivita"                           element={<Attivita />} />

@@ -18,7 +18,8 @@ router = APIRouter(prefix="/cv", tags=["CV"])
 
 
 async def _run_parsing(cv_id: int, raw_text: str) -> None:
-    """Background task: calls Ollama and persists result with its own DB session."""
+    """Background task: estrae i dati dal CV e, a parsing riuscito, avvia
+    AUTOMATICAMENTE l'analisi di carriera (caricare un CV = chiedere l'analisi)."""
     async with AsyncSessionLocal() as session:
         repo = CVRepository(session)
         try:
@@ -28,6 +29,25 @@ async def _run_parsing(cv_id: int, raw_text: str) -> None:
         except (OllamaUnavailableError, OllamaParsingError) as e:
             await repo.update_status(cv_id, "error")
             logger.error("Parsing fallito: cv_id=%d error=%s", cv_id, e)
+            return
+
+    await _auto_analyze(cv_id, parsed_dict)
+
+
+async def _auto_analyze(cv_id: int, parsed_dict: dict) -> None:
+    """Crea ed esegue subito un'analisi di carriera per il CV appena parsato."""
+    # Import locale per evitare problemi di ordine di caricamento dei moduli
+    from app.api.v1.endpoints.analysis import _run_analysis
+    from app.repositories.analysis_repository import AnalysisRepository
+
+    async with AsyncSessionLocal() as session:
+        arepo = AnalysisRepository(session)
+        record = await arepo.create(cv_id=cv_id)
+        await arepo.update_status(record.id, "analyzing")
+        analysis_id = record.id
+
+    logger.info("Auto-analisi avviata: cv_id=%d analysis_id=%d", cv_id, analysis_id)
+    await _run_analysis(analysis_id, cv_id, parsed_dict)
 
 
 def _build_detail_response(cv) -> CVDetailResponse:

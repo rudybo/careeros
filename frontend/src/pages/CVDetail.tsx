@@ -1,9 +1,9 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchCV, startAnalysis, fetchAnalysisList } from '../api/client'
+import { useQuery } from '@tanstack/react-query'
+import { fetchCV, fetchAnalysisList } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
 import AgentBubble from '../components/AgentBubble'
-import { ArrowLeftIcon, SparklesIcon, BriefcaseIcon, TrendingUpIcon, ListChecksIcon } from 'lucide-react'
+import { ArrowLeftIcon, SparklesIcon, TrendingUpIcon, ListChecksIcon } from 'lucide-react'
 
 const demandColor: Record<string, string> = {
   alto: 'bg-green-100 text-green-700',
@@ -15,7 +15,6 @@ export default function CVDetail() {
   const { id } = useParams<{ id: string }>()
   const cvId = Number(id)
   const navigate = useNavigate()
-  const qc = useQueryClient()
 
   const { data: cv, isLoading } = useQuery({
     queryKey: ['cv', cvId],
@@ -30,26 +29,10 @@ export default function CVDetail() {
     refetchInterval: (q) => (q.state.data ?? []).some(a => a.status === 'analyzing') ? 2000 : false,
   })
 
-  const analyze = useMutation({
-    mutationFn: () => startAnalysis(cvId),
-    onSuccess: async (res) => {
-      await qc.invalidateQueries({ queryKey: ['analyses', cvId] })
-      navigate(`/cv/${cvId}/analysis/${res.data.analysis_id}`)
-    },
-  })
-
   // Ultima analisi (per id decrescente) e ultima completata
   const sorted = [...analyses].sort((a, b) => b.id - a.id)
   const latest = sorted[0]
   const latestCompleted = sorted.find(a => a.status === 'completed')
-  const hasAnalysis = sorted.length > 0
-
-  const handleAnalyze = () => {
-    if (hasAnalysis && !window.confirm(
-      'Generare una NUOVA analisi?\n\nL\'LLM produrrà un risultato diverso da quello attuale. L\'analisi precedente resterà nello storico.'
-    )) return
-    analyze.mutate()
-  }
 
   if (isLoading) return <div className="p-8 text-gray-400">Caricamento...</div>
   if (!cv) return <div className="p-8 text-red-500">CV non trovato</div>
@@ -58,11 +41,11 @@ export default function CVDetail() {
 
   return (
     <div className="p-4 pb-40 md:px-8 md:pt-8 max-w-4xl">
-      <Link to="/cv" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-6">
-        <ArrowLeftIcon size={14} /> Tutti i CV
+      <Link to="/cv/storico" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-6">
+        <ArrowLeftIcon size={14} /> Storico
       </Link>
 
-      {/* Header */}
+      {/* Header — vista storica in sola lettura */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -70,32 +53,7 @@ export default function CVDetail() {
           </h1>
           {parsed?.email && <p className="text-gray-500 text-sm mt-0.5">{parsed.email} · {parsed.phone}</p>}
         </div>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <StatusBadge status={cv.status} />
-          {cv.status === 'parsed' && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={handleAnalyze}
-                disabled={analyze.isPending}
-                className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-60 ${
-                  hasAnalysis
-                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                <SparklesIcon size={15} />
-                {analyze.isPending ? 'Avvio...' : hasAnalysis ? 'Ricalcola' : 'Analizza carriera'}
-              </button>
-              <Link
-                to="/applications"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200"
-              >
-                <BriefcaseIcon size={15} />
-                Nuova candidatura
-              </Link>
-            </div>
-          )}
-        </div>
+        <StatusBadge status={cv.status} />
       </div>
 
       {/* Minerva — visibile quando c'è un'analisi in corso o completata */}
