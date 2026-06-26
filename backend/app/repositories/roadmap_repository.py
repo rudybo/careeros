@@ -18,11 +18,10 @@ class RoadmapRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_cv(self, cv_id: int) -> list[RoadmapItem]:
+    async def get_all(self) -> list[RoadmapItem]:
+        """Lista a livello di CARRIERA (unica, non per singolo CV)."""
         result = await self._session.execute(
-            select(RoadmapItem)
-            .where(RoadmapItem.cv_id == cv_id)
-            .order_by(RoadmapItem.created_at.asc())
+            select(RoadmapItem).order_by(RoadmapItem.created_at.asc())
         )
         return list(result.scalars().all())
 
@@ -39,7 +38,7 @@ class RoadmapRepository:
         """Aggiunge come 'todo' solo gli step non già presenti (per fingerprint),
         in qualsiasi stato. Quelli completati/annullati restano e non vengono
         riproposti. Ritorna il numero di nuovi item aggiunti."""
-        existing = await self.get_by_cv(cv_id)
+        existing = await self.get_all()
         seen = {it.fingerprint for it in existing}
         added = 0
         for step in steps:
@@ -64,9 +63,9 @@ class RoadmapRepository:
             await self._session.commit()
         return added
 
-    async def get_done_and_dismissed(self, cv_id: int) -> tuple[list[str], list[str]]:
+    async def get_done_and_dismissed(self) -> tuple[list[str], list[str]]:
         """Ritorna (azioni completate, azioni annullate) per informare il modello."""
-        items = await self.get_by_cv(cv_id)
+        items = await self.get_all()
         done = [it.action for it in items if it.status == "done"]
         dismissed = [it.action for it in items if it.status == "dismissed"]
         return done, dismissed

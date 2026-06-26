@@ -33,16 +33,23 @@ async def _run_analysis(analysis_id: int, cv_id: int, cv_parsed_data: dict) -> N
         ats_repo = AtsKeywordRepository(session)
         try:
             parsed_cv = ParsedCV(**cv_parsed_data)
-            # Le attività fatte/annullate e le keyword già gestite informano Minerva
-            completed, dismissed = await roadmap_repo.get_done_and_dismissed(cv_id)
-            handled_ats = await ats_repo.get_handled(cv_id)
+            # Lista di carriera (unica): attività fatte/annullate e keyword già gestite informano Minerva
+            completed, dismissed = await roadmap_repo.get_done_and_dismissed()
+            handled_ats = await ats_repo.get_handled()
             result = await career_strategist.analyze(parsed_cv, completed, dismissed, handled_ats)
             await repo.update_analysis_data(analysis_id, result)
-            # Aggiunge i nuovi step/keyword alle checklist persistenti del CV
+
+            # Testo del CV per l'auto-rilevamento delle keyword
+            cv = await CVRepository(session).get_by_id(cv_id)
+            cv_text = (cv.raw_text if cv and cv.raw_text else json.dumps(cv_parsed_data, ensure_ascii=False))
+
+            # Auto-rilevamento: ciò che hai inserito nel nuovo CV risulta "aggiunto"
+            auto = await ats_repo.mark_present_as_added(cv_text)
+            # Aggiunge solo le novità (non già in lista e non già presenti nel CV)
             added = await roadmap_repo.merge_steps(cv_id, result.get("roadmap", []))
-            added_ats = await ats_repo.merge_keywords(cv_id, result.get("ats_keywords", []))
-            logger.info("Analisi completata: analysis_id=%d, +%d attività, +%d keyword ATS",
-                        analysis_id, added, added_ats)
+            added_ats = await ats_repo.merge_keywords(cv_id, result.get("ats_keywords", []), cv_text)
+            logger.info("Analisi completata: analysis_id=%d, +%d attività, +%d keyword (auto-aggiunte %d)",
+                        analysis_id, added, added_ats, auto)
         except Exception as e:
             await repo.update_status(analysis_id, "error")
             logger.error("Analisi fallita: analysis_id=%d error=%s", analysis_id, e, exc_info=True)
@@ -119,7 +126,7 @@ async def get_roadmap(cv_id: int, db: AsyncSession = Depends(get_db)):
     """Checklist persistente del CV. Se vuota ma esiste un'analisi con roadmap,
     la popola al volo (backfill per analisi generate prima della feature)."""
     repo = RoadmapRepository(db)
-    items = await repo.get_by_cv(cv_id)
+    items = await repo.get_all()
     if not items:
         analysis_repo = AnalysisRepository(db)
         latest = await analysis_repo.get_latest_by_cv(cv_id)
@@ -127,7 +134,7 @@ async def get_roadmap(cv_id: int, db: AsyncSession = Depends(get_db)):
             roadmap = json.loads(latest.analysis_data).get("roadmap", [])
             if roadmap:
                 await repo.merge_steps(cv_id, roadmap)
-                items = await repo.get_by_cv(cv_id)
+                items = await repo.get_all()
     return items
 
 
@@ -142,7 +149,7 @@ async def update_roadmap_item(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stato non valido.")
     repo = RoadmapRepository(db)
     item = await repo.set_status(item_id, body.status)
-    if item is None or item.cv_id != cv_id:
+    if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attività non trovata.")
     return item
 
@@ -151,7 +158,7 @@ async def update_roadmap_item(
 async def get_ats_keywords(cv_id: int, db: AsyncSession = Depends(get_db)):
     """Checklist persistente delle keyword ATS. Backfill dall'ultima analisi se vuota."""
     repo = AtsKeywordRepository(db)
-    items = await repo.get_by_cv(cv_id)
+    items = await repo.get_all()
     if not items:
         analysis_repo = AnalysisRepository(db)
         latest = await analysis_repo.get_latest_by_cv(cv_id)
@@ -159,7 +166,7 @@ async def get_ats_keywords(cv_id: int, db: AsyncSession = Depends(get_db)):
             keywords = json.loads(latest.analysis_data).get("ats_keywords", [])
             if keywords:
                 await repo.merge_keywords(cv_id, keywords)
-                items = await repo.get_by_cv(cv_id)
+                items = await repo.get_all()
     return items
 
 
@@ -174,6 +181,6 @@ async def update_ats_keyword(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stato non valido.")
     repo = AtsKeywordRepository(db)
     item = await repo.set_status(item_id, body.status)
-    if item is None or item.cv_id != cv_id:
+    if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Keyword non trovata.")
     return item
