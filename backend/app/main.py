@@ -65,7 +65,14 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_market_search, "cron", hour=19, minute=0, id="iris_evening")
     scheduler.start()
     logger.info("Iris scheduler avviata: 08:00 e 19:00")
+
+    import asyncio
+    from app.services import telegram_service
+    telegram_task = asyncio.create_task(telegram_service.poll_loop())
+
     yield
+
+    telegram_task.cancel()
     scheduler.shutdown(wait=False)
 
 

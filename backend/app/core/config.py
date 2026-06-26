@@ -30,5 +30,10 @@ class Settings(BaseSettings):
     adzuna_app_key: str = ""
     jooble_api_key: str = ""
 
+    # Telegram (notifiche offerte sopra soglia)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    telegram_min_score: int = 70
+
 
 settings = Settings()

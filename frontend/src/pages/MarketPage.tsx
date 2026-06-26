@@ -150,7 +150,7 @@ export default function MarketPage() {
       const opps = q.state.data ?? []
       const hasGenerating = opps.some((o: any) => o.draft_status === 'generating')
       if (searchStatus?.running || hasGenerating) return 4000
-      return false
+      return 8000  // refresh leggero: riflette le azioni fatte da Telegram
     },
   })
 
