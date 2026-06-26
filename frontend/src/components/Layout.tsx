@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router-dom'
-import { BriefcaseIcon, FileTextIcon, LayoutDashboardIcon, MoonIcon, SunIcon, TrendingUpIcon, MenuIcon, XIcon } from 'lucide-react'
+import { BriefcaseIcon, FileTextIcon, LayoutDashboardIcon, MoonIcon, SunIcon, TrendingUpIcon, MenuIcon, XIcon, ListChecksIcon } from 'lucide-react'
 import { fetchInfo } from '../api/client'
 import { BUILD_TIME } from '../version'
 
 const nav = [
   { to: '/',            label: 'Dashboard',   icon: LayoutDashboardIcon },
   { to: '/cv',          label: 'Curriculum',  icon: FileTextIcon },
+  { to: '/attivita',    label: 'Attività',    icon: ListChecksIcon },
   { to: '/applications',label: 'Candidature', icon: BriefcaseIcon },
   { to: '/market',      label: 'Market Scout', icon: TrendingUpIcon },
 ]

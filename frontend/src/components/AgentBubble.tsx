@@ -7,6 +7,7 @@ interface Props {
   name: AgentName
   message: string
   active?: boolean   // puntini animati quando l'agente sta lavorando
+  action?: { label: string; onClick: () => void }
 }
 
 const STORAGE_KEY = 'agentBubblePos'
@@ -32,7 +33,7 @@ function useIsMobile() {
   return mobile
 }
 
-export default function AgentBubble({ name, message, active = false }: Props) {
+export default function AgentBubble({ name, message, active = false, action }: Props) {
   const isMobile = useIsMobile()
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
@@ -78,6 +79,15 @@ export default function AgentBubble({ name, message, active = false }: Props) {
           )}
         </div>
         <p className="text-sm text-gray-600 mt-0.5">{message}</p>
+        {action && (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={action.onClick}
+            className="mt-2 px-3 py-1 text-xs font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"
+          >
+            {action.label}
+          </button>
+        )}
       </div>
     </>
   )

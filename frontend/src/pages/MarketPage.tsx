@@ -256,8 +256,8 @@ export default function MarketPage() {
             <div key={opp.id} className={`bg-white rounded-xl border p-5 transition-opacity ${
               opp.status === 'dismissed' ? 'opacity-40 border-gray-100' : 'border-gray-200'
             }`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
+              <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <ScoreBadge score={opp.match_score} />
                     {opp.work_mode && opp.work_mode !== 'unknown' && (
@@ -293,50 +293,50 @@ export default function MarketPage() {
                       ))}
                     </ul>
                   )}
-                  <div className="mt-2 flex justify-end">
-                    <span className="text-xs text-gray-300 uppercase tracking-wide">{opp.source}</span>
-                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <a href={opp.url} target="_blank" rel="noreferrer"
-                    className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Apri offerta">
-                    <ExternalLinkIcon size={15} />
-                  </a>
-                  {opp.draft_status === 'ready' && opp.gmail_url ? (
-                    <a href={opp.gmail_url} target="_blank" rel="noreferrer"
-                      className="p-1.5 text-green-500 hover:text-green-700 transition-colors" title="Apri bozza in Gmail">
-                      <CheckCircleIcon size={15} />
+                <div className="flex items-center justify-between gap-3 mt-3">
+                  <div className="flex items-center gap-1.5">
+                    <a href={opp.url} target="_blank" rel="noreferrer"
+                      className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Apri offerta">
+                      <ExternalLinkIcon size={15} />
                     </a>
-                  ) : opp.draft_status === 'generating' ? (
-                    <span className="p-1.5 text-indigo-400" title="Generazione in corso...">
-                      <Loader2Icon size={15} className="animate-spin" />
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => createDraft.mutate(opp.id)}
-                      disabled={!parsedCV || createDraft.isPending}
-                      className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-30" title="Crea bozza email">
-                      <MailIcon size={15} />
-                    </button>
-                  )}
-                  {opp.status !== 'applied' && (
-                    <button onClick={() => updateStatus.mutate({ id: opp.id, status: 'applied' })}
-                      className="p-1.5 text-gray-400 hover:text-emerald-600 transition-colors" title="Mi sono candidato">
-                      <SendIcon size={15} />
-                    </button>
-                  )}
-                  {opp.status !== 'saved' && opp.status !== 'applied' && (
-                    <button onClick={() => updateStatus.mutate({ id: opp.id, status: 'saved' })}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Salva">
-                      <BookmarkIcon size={15} />
-                    </button>
-                  )}
-                  {opp.status !== 'dismissed' && (
-                    <button onClick={() => updateStatus.mutate({ id: opp.id, status: 'dismissed' })}
-                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors" title="Scarta">
-                      <XCircleIcon size={15} />
-                    </button>
-                  )}
+                    {opp.draft_status === 'ready' && opp.gmail_url ? (
+                      <a href={opp.gmail_url} target="_blank" rel="noreferrer"
+                        className="p-1.5 text-green-500 hover:text-green-700 transition-colors" title="Apri bozza in Gmail">
+                        <CheckCircleIcon size={15} />
+                      </a>
+                    ) : opp.draft_status === 'generating' ? (
+                      <span className="p-1.5 text-indigo-400" title="Generazione in corso...">
+                        <Loader2Icon size={15} className="animate-spin" />
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => createDraft.mutate(opp.id)}
+                        disabled={!parsedCV || createDraft.isPending}
+                        className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-30" title="Crea bozza email">
+                        <MailIcon size={15} />
+                      </button>
+                    )}
+                    {opp.status !== 'applied' && (
+                      <button onClick={() => updateStatus.mutate({ id: opp.id, status: 'applied' })}
+                        className="p-1.5 text-gray-400 hover:text-emerald-600 transition-colors" title="Mi sono candidato">
+                        <SendIcon size={15} />
+                      </button>
+                    )}
+                    {opp.status !== 'saved' && opp.status !== 'applied' && (
+                      <button onClick={() => updateStatus.mutate({ id: opp.id, status: 'saved' })}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Salva">
+                        <BookmarkIcon size={15} />
+                      </button>
+                    )}
+                    {opp.status !== 'dismissed' && (
+                      <button onClick={() => updateStatus.mutate({ id: opp.id, status: 'dismissed' })}
+                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors" title="Scarta">
+                        <XCircleIcon size={15} />
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-300 uppercase tracking-wide shrink-0">{opp.source}</span>
                 </div>
               </div>
             </div>
