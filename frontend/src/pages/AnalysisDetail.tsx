@@ -129,15 +129,17 @@ export default function AnalysisDetail() {
             </h2>
             <div className="space-y-3">
               {a.target_roles.map((role, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 w-16 text-center ${demandColor[role.market_demand] ?? 'bg-gray-100 text-gray-600'}`}>
-                    {role.market_demand}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 text-sm">{role.title}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 truncate">{role.reason}</div>
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
+                  <div className="flex flex-col items-center gap-1 shrink-0 w-16">
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium w-full text-center ${demandColor[role.market_demand] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {role.market_demand}
+                    </span>
+                    <span className="text-sm font-bold text-blue-600">{role.match_percentage}%</span>
                   </div>
-                  <span className="text-sm font-bold text-blue-600 shrink-0">{role.match_percentage}%</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 text-sm break-words">{role.title}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 break-words">{role.reason}</div>
+                  </div>
                 </div>
               ))}
             </div>
