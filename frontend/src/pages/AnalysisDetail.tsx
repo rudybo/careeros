@@ -169,13 +169,13 @@ export default function AnalysisDetail() {
                             href={searchUrl(r.title, r.provider)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors max-w-full"
                             title={`Cerca: ${r.title} · ${r.provider}`}
                           >
                             <SearchIcon size={11} className="text-gray-400 shrink-0" />
-                            <span className="font-medium text-gray-700">{r.title}</span>
-                            <span className="text-gray-400">· {r.provider}</span>
-                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${
+                            <span className="font-medium text-gray-700 truncate min-w-0">{r.title}</span>
+                            <span className="text-gray-400 shrink-0">· {r.provider}</span>
+                            <span className={`shrink-0 px-1.5 py-0.5 rounded-full font-medium ${
                               r.cost === 'gratuito' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                             }`}>
                               {r.cost}
