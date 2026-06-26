@@ -194,12 +194,12 @@ export default function MarketPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl">
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Iris <span className="text-base font-normal text-gray-400 ml-1">· Market Scout</span></h1>
+          <h1 className="text-2xl font-bold text-gray-900">Market Scout</h1>
           <p className="text-gray-500 mt-1 text-sm">Offerte di lavoro selezionate e rankate in base al tuo CV — ricerca automatica 08:00 e 19:00</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => setShowPrefs(p => !p)}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:border-blue-400 hover:text-blue-600 transition-colors">
             <SlidersIcon size={14} /> Preferenze
