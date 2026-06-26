@@ -28,7 +28,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Barra superiore mobile con hamburger */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-gray-900 flex items-center px-4 z-30">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-gray-900 flex items-center px-4 z-30">
         <button onClick={() => setOpen(true)} className="text-white p-1" aria-label="Menu">
           <MenuIcon size={22} />
         </button>
@@ -36,16 +36,16 @@ export default function Layout() {
       </div>
 
       {/* Sfondo scuro quando il menu è aperto (solo mobile) */}
-      {open && <div className="md:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setOpen(false)} />}
+      {open && <div className="lg:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setOpen(false)} />}
 
       {/* Sidebar: drawer su mobile, fissa su desktop */}
-      <aside className={`w-56 bg-gray-900 flex flex-col fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 md:static md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`w-56 bg-gray-900 flex flex-col fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 lg:static lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="px-5 py-6 border-b border-gray-700 flex items-center justify-between">
           <div>
             <span className="text-white font-bold text-lg tracking-tight">CareerOS</span>
             <span className="block text-gray-400 text-xs mt-0.5">AI Career Platform</span>
           </div>
-          <button onClick={() => setOpen(false)} className="md:hidden text-gray-400 hover:text-white p-1" aria-label="Chiudi">
+          <button onClick={() => setOpen(false)} className="lg:hidden text-gray-400 hover:text-white p-1" aria-label="Chiudi">
             <XIcon size={18} />
           </button>
         </div>
@@ -91,7 +91,7 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-14 md:pt-0">
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-14 lg:pt-0">
         <Outlet />
       </main>
     </div>

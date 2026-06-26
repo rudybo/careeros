@@ -193,7 +193,7 @@ export default function MarketPage() {
   ]
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
+    <div className="p-4 pb-24 md:p-8 max-w-4xl">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Market Scout</h1>
@@ -223,8 +223,8 @@ export default function MarketPage() {
 
       {/* Filter tabs — always visible after first search */}
       {searchStatus !== undefined && (
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex gap-1">
+        <div className="mb-4">
+          <div className="flex flex-wrap gap-1">
             {filters.map(f => (
               <button key={String(f.value)} onClick={() => setActiveFilter(f.value)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
@@ -235,10 +235,10 @@ export default function MarketPage() {
                 {f.label}
               </button>
             ))}
+            {(!activeFilter || activeFilter === 'new') && opportunities.length > 0 && (
+              <span className="text-xs text-gray-400 self-center ml-auto hidden sm:block">Top 10 per match score</span>
+            )}
           </div>
-          {(!activeFilter || activeFilter === 'new') && opportunities.length > 0 && (
-            <span className="text-xs text-gray-400">Top 10 per match score</span>
-          )}
         </div>
       )}
 
