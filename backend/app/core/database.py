@@ -38,6 +38,9 @@ async def _migrate_add_columns(conn) -> None:
     await conn.run_sync(_add_if_missing, "job_opportunities", "draft_id", "VARCHAR(255)")
     await conn.run_sync(_add_if_missing, "job_opportunities", "gmail_url", "TEXT")
     await conn.run_sync(_add_if_missing, "user_preferences", "target_roles", "TEXT")
+    # DEFAULT 1: le offerte esistenti (pre-feature) risultano già notificate, niente flood.
+    # Le nuove offerte inserite dall'ORM usano il default del modello (False) → verranno notificate.
+    await conn.run_sync(_add_if_missing, "job_opportunities", "notified", "BOOLEAN DEFAULT 1")
 
 
 async def init_db() -> None:

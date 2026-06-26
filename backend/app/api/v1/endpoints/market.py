@@ -68,6 +68,8 @@ async def _run_search(cv_parsed_data: dict) -> None:
             _last_search_count = created
             _last_search_error = None
             logger.info("Market Scout: %d nuove offerte, %d gia presenti", created, skipped)
+            from app.services import telegram_service
+            await telegram_service.notify_new_opportunities()
         except ScoutError as e:
             _last_search_error = str(e)
             logger.error("Market Scout fallito: %s", e)

@@ -44,6 +44,7 @@ class JobOpportunity(Base):
     draft_status: Mapped[str] = mapped_column(String(50), default="none")      # none/ready/sent
     draft_id: Mapped[str | None] = mapped_column(String(255), nullable=True)   # Gmail draft ID
     gmail_url: Mapped[str | None] = mapped_column(Text, nullable=True)         # direct link to draft
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)             # già notificata su Telegram
     found_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

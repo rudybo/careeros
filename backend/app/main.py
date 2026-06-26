@@ -52,6 +52,8 @@ async def _scheduled_market_search() -> None:
             results = await scout.search(cv, prefs)
             created, skipped = await opp_repo.upsert_many(results)
             logger.info("Hermes scheduler: %d nuove offerte, %d già presenti", created, skipped)
+            from app.services import telegram_service
+            await telegram_service.notify_new_opportunities()
         except Exception as e:
             logger.error("Hermes scheduler errore: %s", e, exc_info=True)
 

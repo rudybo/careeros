@@ -69,6 +69,25 @@ class OpportunityRepository:
         result = await self._session.execute(select(JobOpportunity).where(JobOpportunity.id == opp_id))
         return result.scalar_one_or_none()
 
+    async def get_unnotified_above(self, min_score: int) -> list[JobOpportunity]:
+        """Offerte 'new' mai notificate con match_score >= soglia (per Telegram)."""
+        result = await self._session.execute(
+            select(JobOpportunity)
+            .where(
+                JobOpportunity.notified.is_(False),
+                JobOpportunity.status == "new",
+                JobOpportunity.match_score >= min_score,
+            )
+            .order_by(JobOpportunity.match_score.desc())
+        )
+        return list(result.scalars().all())
+
+    async def mark_notified(self, opp_id: int) -> None:
+        opp = await self.get_by_id(opp_id)
+        if opp:
+            opp.notified = True
+            await self._session.commit()
+
     async def update_draft_status(self, opp_id: int, status: str) -> JobOpportunity | None:
         result = await self._session.execute(select(JobOpportunity).where(JobOpportunity.id == opp_id))
         opp = result.scalar_one_or_none()

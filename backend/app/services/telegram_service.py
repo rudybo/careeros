@@ -69,6 +69,26 @@ async def send_text(text: str) -> None:
     })
 
 
+async def notify_new_opportunities() -> int:
+    """Invia su Telegram le nuove offerte sopra soglia non ancora notificate.
+    Da chiamare dopo ogni ricerca (scheduler o manuale). Ritorna quante inviate."""
+    if not settings.telegram_bot_token:
+        return 0
+    from app.core.database import AsyncSessionLocal
+    from app.repositories.market_repository import OpportunityRepository
+    sent = 0
+    async with AsyncSessionLocal() as s:
+        repo = OpportunityRepository(s)
+        opps = await repo.get_unnotified_above(settings.telegram_min_score)
+        for opp in opps:
+            await send_opportunity(opp)
+            await repo.mark_notified(opp.id)
+            sent += 1
+    if sent:
+        logger.info("Telegram: inviate %d nuove offerte sopra soglia (>=%d)", sent, settings.telegram_min_score)
+    return sent
+
+
 # ── Poller: legge i click sui bottoni (long-polling, niente webhook) ──────────
 
 async def _answer_callback(cb_id: str, text: str = "") -> None:
