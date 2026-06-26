@@ -19,7 +19,21 @@ const AGENT_BG: Record<AgentName, string> = {
   Iris:    'bg-gradient-to-br from-orange-100 to-orange-50 border-orange-300',
 }
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return mobile
+}
+
 export default function AgentBubble({ name, message, active = false }: Props) {
+  const isMobile = useIsMobile()
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
@@ -48,16 +62,9 @@ export default function AgentBubble({ name, message, active = false }: Props) {
     ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
   }
 
-  return (
-    <div
-      style={{ left: pos.x, top: pos.y, width: WIDTH }}
-      className={`fixed z-50 flex items-center gap-3 border rounded-xl p-3 shadow-lg cursor-move select-none touch-none ${AGENT_BG[name]}`}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      title="Trascina per spostare"
-    >
-      {/* cella avatar — userà il volto vero appena disponibile in /agents/<nome>.png */}
+  const content = (
+    <>
+      {/* cella avatar — volto vero da /agents/<nome>.png */}
       <AgentAvatar name={name} size={44} />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -72,6 +79,29 @@ export default function AgentBubble({ name, message, active = false }: Props) {
         </div>
         <p className="text-sm text-gray-600 mt-0.5">{message}</p>
       </div>
+    </>
+  )
+
+  // Mobile: barra fissa in basso, non trascinabile
+  if (isMobile) {
+    return (
+      <div className={`fixed bottom-0 left-0 right-0 z-50 flex items-center gap-3 border-t p-3 shadow-lg ${AGENT_BG[name]}`}>
+        {content}
+      </div>
+    )
+  }
+
+  // Desktop: vignetta flottante trascinabile
+  return (
+    <div
+      style={{ left: pos.x, top: pos.y, width: WIDTH }}
+      className={`fixed z-50 flex items-center gap-3 border rounded-xl p-3 shadow-lg cursor-move select-none touch-none ${AGENT_BG[name]}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      title="Trascina per spostare"
+    >
+      {content}
     </div>
   )
 }
