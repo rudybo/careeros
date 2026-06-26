@@ -52,7 +52,7 @@ function AgentsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <img src="/agents/group.png" alt="Le agenti di CareerOS" className="w-full max-h-72 object-cover" style={{ objectPosition: '50% 28%' }} />
-        <div className="p-6 grid grid-cols-2 gap-5">
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
           {AGENTS.map(a => (
             <div key={a.name} className="flex gap-4">
               <AgentAvatar name={a.name as any} size={64} />
@@ -104,7 +104,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {stats.map(({ label, value, sub, icon: Icon, color, bg }) => {
           const isAgents = label === 'Agenti attivi'
           return (
@@ -124,7 +124,7 @@ export default function Dashboard() {
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Recent CVs */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">

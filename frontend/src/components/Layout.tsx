@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router-dom'
-import { BriefcaseIcon, FileTextIcon, LayoutDashboardIcon, MoonIcon, SunIcon, TrendingUpIcon } from 'lucide-react'
+import { BriefcaseIcon, FileTextIcon, LayoutDashboardIcon, MoonIcon, SunIcon, TrendingUpIcon, MenuIcon, XIcon } from 'lucide-react'
 import { fetchInfo } from '../api/client'
 
 const nav = [
@@ -22,15 +22,32 @@ function useDarkMode() {
 
 export default function Layout() {
   const [dark, setDark] = useDarkMode()
+  const [open, setOpen] = useState(false)
   const { data: info } = useQuery({ queryKey: ['info'], queryFn: fetchInfo, staleTime: Infinity })
   const isCloud = info?.provider === 'groq'
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-56 bg-gray-900 flex flex-col">
-        <div className="px-5 py-6 border-b border-gray-700">
-          <span className="text-white font-bold text-lg tracking-tight">CareerOS</span>
-          <span className="block text-gray-400 text-xs mt-0.5">AI Career Platform</span>
+      {/* Barra superiore mobile con hamburger */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-gray-900 flex items-center px-4 z-30">
+        <button onClick={() => setOpen(true)} className="text-white p-1" aria-label="Menu">
+          <MenuIcon size={22} />
+        </button>
+        <span className="text-white font-bold ml-3">CareerOS</span>
+      </div>
+
+      {/* Sfondo scuro quando il menu è aperto (solo mobile) */}
+      {open && <div className="md:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setOpen(false)} />}
+
+      {/* Sidebar: drawer su mobile, fissa su desktop */}
+      <aside className={`w-56 bg-gray-900 flex flex-col fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 md:static md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-5 py-6 border-b border-gray-700 flex items-center justify-between">
+          <div>
+            <span className="text-white font-bold text-lg tracking-tight">CareerOS</span>
+            <span className="block text-gray-400 text-xs mt-0.5">AI Career Platform</span>
+          </div>
+          <button onClick={() => setOpen(false)} className="md:hidden text-gray-400 hover:text-white p-1" aria-label="Chiudi">
+            <XIcon size={18} />
+          </button>
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {nav.map(({ to, label, icon: Icon }) => (
@@ -38,6 +55,7 @@ export default function Layout() {
               key={to}
               to={to}
               end={to === '/'}
+              onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive
@@ -73,7 +91,7 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto pt-14 md:pt-0">
         <Outlet />
       </main>
     </div>
