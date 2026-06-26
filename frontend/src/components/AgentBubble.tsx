@@ -51,7 +51,7 @@ export default function AgentBubble({ name, message, active = false }: Props) {
   return (
     <div
       style={{ left: pos.x, top: pos.y, width: WIDTH }}
-      className={`fixed z-50 flex items-center gap-3 border rounded-xl p-3 shadow-lg cursor-move select-none ${AGENT_BG[name]}`}
+      className={`fixed z-50 flex items-center gap-3 border rounded-xl p-3 shadow-lg cursor-move select-none touch-none ${AGENT_BG[name]}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
