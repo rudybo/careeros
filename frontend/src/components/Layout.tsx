@@ -91,7 +91,7 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-14 lg:pt-0">
+      <main className="flex-1 min-w-0 w-full lg:w-auto bg-gray-50 overflow-y-auto overflow-x-hidden pt-14 lg:pt-0">
         <Outlet />
       </main>
     </div>
