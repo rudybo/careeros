@@ -78,7 +78,7 @@ export default function AnalysisDetail() {
   const atsHandled = atsItems.filter(k => k.status !== 'todo')
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-4 md:p-8 max-w-6xl">
       <Link to={`/cv/${cvId}`} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-6">
         <ArrowLeftIcon size={14} /> Torna al CV
       </Link>

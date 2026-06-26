@@ -89,7 +89,7 @@ export default function ApplicationDetail() {
     : { name: 'Vera' as const, active: false, message: 'Sono Vera. Ottimizzo il tuo CV per questa posizione; Clio prepara la cover letter su misura.' }
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 md:p-8 max-w-4xl">
       <Link to="/applications" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-6">
         <ArrowLeftIcon size={14} /> Tutte le candidature
       </Link>

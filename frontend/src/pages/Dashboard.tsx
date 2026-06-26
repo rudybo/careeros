@@ -95,7 +95,7 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       {showAgents && <AgentsModal onClose={() => setShowAgents(false)} />}
 
       <div className="mb-8">
@@ -104,7 +104,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map(({ label, value, sub, icon: Icon, color, bg }) => {
           const isAgents = label === 'Agenti attivi'
           return (
@@ -124,7 +124,7 @@ export default function Dashboard() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent CVs */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">

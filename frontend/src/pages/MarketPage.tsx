@@ -48,8 +48,8 @@ function PreferencesPanel({ onClose }: { onClose: () => void }) {
       <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
         <SlidersIcon size={16} /> Preferenze di ricerca <span className="text-xs font-normal text-gray-400">(tutti opzionali)</span>
       </h2>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
           <label className="text-xs text-gray-500 mb-1 block">Ruoli target <span className="text-gray-400">(separati da virgola)</span></label>
           <input type="text"
             placeholder="es. IT Manager, Data Analyst, BI Manager, Business Central Consultant"
@@ -193,7 +193,7 @@ export default function MarketPage() {
   ]
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 md:p-8 max-w-4xl">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Iris <span className="text-base font-normal text-gray-400 ml-1">· Market Scout</span></h1>
