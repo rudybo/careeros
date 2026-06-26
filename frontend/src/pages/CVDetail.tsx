@@ -57,7 +57,7 @@ export default function CVDetail() {
   const parsed = cv.parsed_data
 
   return (
-    <div className="p-4 pb-24 md:px-8 md:pt-8 max-w-4xl">
+    <div className="p-4 pb-40 md:px-8 md:pt-8 max-w-4xl">
       <Link to="/cv" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-6">
         <ArrowLeftIcon size={14} /> Tutti i CV
       </Link>
@@ -241,27 +241,6 @@ export default function CVDetail() {
             )}
           </div>
 
-          {/* Past analyses */}
-          {analyses.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">Storico analisi</h2>
-              <ul className="space-y-2">
-                {analyses.map(a => (
-                  <li key={a.id}>
-                    <Link
-                      to={`/cv/${cvId}/analysis/${a.id}`}
-                      className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50"
-                    >
-                      <span className="text-sm text-gray-700">
-                        Analisi #{a.id} · {new Date(a.created_at).toLocaleDateString('it-IT')}
-                      </span>
-                      <StatusBadge status={a.status} />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
     </div>

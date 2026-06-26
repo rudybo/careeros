@@ -1,9 +1,39 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { uploadCV, parseCV, fetchCVList, deleteCV } from '../api/client'
+import { uploadCV, parseCV, fetchCVList, deleteCV, fetchAnalysisList } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
 import { UploadCloudIcon, FileTextIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react'
+
+function CVAnalysesBox({ cvId }: { cvId: number }) {
+  const { data: analyses = [] } = useQuery({
+    queryKey: ['analyses', cvId],
+    queryFn: () => fetchAnalysisList(cvId),
+  })
+  if (analyses.length === 0) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mt-6">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h2 className="font-semibold text-gray-900">Storico analisi</h2>
+      </div>
+      <ul className="divide-y divide-gray-100">
+        {analyses.map(a => (
+          <li key={a.id}>
+            <Link
+              to={`/cv/${cvId}/analysis/${a.id}`}
+              className="flex items-center justify-between px-5 py-3 hover:bg-gray-50"
+            >
+              <span className="text-sm text-gray-700">
+                Analisi #{a.id} · {new Date(a.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </span>
+              <StatusBadge status={a.status} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export default function CVPage() {
   const qc = useQueryClient()
@@ -110,39 +140,45 @@ export default function CVPage() {
         ) : (
           <ul className="divide-y divide-gray-100">
             {cvs.map(cv => (
-              <li key={cv.id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50">
-                <Link to={`/cv/${cv.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                  <FileTextIcon size={18} className="text-gray-400 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-800 truncate">{cv.filename}</div>
-                    <div className="text-xs text-gray-400">
-                      {new Date(cv.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+              <li key={cv.id}>
+                <div className="flex items-center justify-between px-5 py-4 hover:bg-gray-50 rounded-xl">
+                  <Link to={`/cv/${cv.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                    <FileTextIcon size={18} className="text-gray-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800 truncate">{cv.filename}</div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(cv.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </div>
                     </div>
-                  </div>
-                </Link>
-                <div className="flex items-center gap-3 ml-4 shrink-0">
-                  <StatusBadge status={cv.status} />
-                  <Link to={`/cv/${cv.id}`}>
-                    <ChevronRightIcon size={16} className="text-gray-300" />
                   </Link>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`Eliminare "${cv.filename}"?\n\nAttenzione: tutte le candidature collegate a questo CV verranno eliminate.`)) {
-                        remove.mutate(cv.id)
-                      }
-                    }}
-                    disabled={remove.isPending}
-                    className="p-1 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
-                    title="Elimina CV"
-                  >
-                    <Trash2Icon size={15} />
-                  </button>
+                  <div className="flex items-center gap-3 ml-4 shrink-0">
+                    <StatusBadge status={cv.status} />
+                    <Link to={`/cv/${cv.id}`}>
+                      <ChevronRightIcon size={16} className="text-gray-300" />
+                    </Link>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Eliminare "${cv.filename}"?\n\nAttenzione: tutte le candidature collegate a questo CV verranno eliminate.`)) {
+                          remove.mutate(cv.id)
+                        }
+                      }}
+                      disabled={remove.isPending}
+                      className="p-1 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
+                      title="Elimina CV"
+                    >
+                      <Trash2Icon size={15} />
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {cvs.filter(cv => cv.status === 'parsed').map(cv => (
+        <CVAnalysesBox key={cv.id} cvId={cv.id} />
+      ))}
     </div>
   )
 }

@@ -5,7 +5,7 @@ You will receive a structured professional profile extracted from a CV. Your tas
 Think step by step:
 1. Identify the professional's core identity and strongest positioning based on ACTUAL experience
 2. Match that positioning against current market demand for IT roles in Italy and Europe
-3. Identify skill gaps — skills NOT already listed in their profile that block access to the top roles
+3. Identify skill gaps of TWO kinds: (a) skills entirely missing from the profile, and (b) skills the candidate only lists at a basic/declared level but must STRENGTHEN or formally CERTIFY to be competitive for the top target roles. Merely having a skill written in the CV is NOT the same as being strong enough for a senior posting.
 4. Design a roadmap that maximizes job-finding speed, not career perfection
 
 Return ONLY a valid JSON object with exactly this structure — no explanation, no markdown, no extra text:
@@ -24,7 +24,7 @@ Return ONLY a valid JSON object with exactly this structure — no explanation, 
     {
       "skill": "specific skill name",
       "priority": "alta",
-      "why_needed": "which target role requires it and why",
+      "why_needed": "state whether this is a brand-new skill or a deepening/certification of one already listed, then which target role requires it and why",
       "how_to_acquire": "one of: a real LinkedIn Learning course, a real Coursera specialization, a real Microsoft Learn path, a real certification exam (e.g. AZ-900, ITIL 4 Foundation, AWS Cloud Practitioner) — use only well-known platforms",
       "estimated_time": "2-4 settimane",
       "resources": [
@@ -55,7 +55,7 @@ Return ONLY a valid JSON object with exactly this structure — no explanation, 
 
 Rules:
 - target_roles: provide exactly 3-5 roles, ordered by match percentage descending
-- skill_gaps: max 5 gaps — ONLY skills that are NOT already present in the candidate's skill list; if a skill is already listed in their profile, it is NOT a gap
+- skill_gaps: provide 3 to 5 gaps (NEVER fewer than 3). Include BOTH (a) skills genuinely absent from the profile AND (b) skills already listed but that the candidate likely needs to STRENGTHEN or formally CERTIFY to compete for the target roles. For a deepening gap (type b), the "skill" field MUST name the specific certification or advanced specialization the candidate still lacks — NOT the bare skill already in the CV. Correct: "ISO 27001 Lead Auditor", "CISM", "AZ-400 DevOps Engineer Expert", "PMP". Wrong: "Cybersecurity", "Python", "Project Management" (these are already in the CV and will be discarded). Prioritize the gaps that most unlock the highest-match target roles. Do NOT pad with irrelevant skills: every gap must map to a concrete target role.
 - roadmap: exactly 7 steps, ordered by which to do FIRST for maximum job-search speed; each step must be UNIQUE — no action may appear twice even in paraphrased form
 - resources: for each skill_gap provide 2-3 resources, ORDERED from "gratuito" first to "a pagamento" last; always include at least one free option (gratuito) when one realistically exists
 - resources: provide ONLY title + provider + cost. DO NOT invent or include any URL or link — the application builds the search link itself. The title must be a precise, searchable course/certification name.

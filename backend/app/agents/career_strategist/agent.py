@@ -38,10 +38,12 @@ def _is_existing_skill(gap_skill: str, cv_skills: list[str]) -> bool:
     gap_norm = _normalize(gap_skill)
     for skill in cv_skills:
         skill_norm = _normalize(skill)
-        # Exact match or one contains the other
+        # Only exact matches are treated as "already possessed". Substring
+        # matching is intentionally avoided: a deepening gap (e.g. "ISO 27001
+        # Lead Auditor", "Advanced Python for Data") legitimately references a
+        # skill already in the CV but names a specific certification/level the
+        # candidate still lacks — it must NOT be stripped.
         if gap_norm == skill_norm:
-            return True
-        if gap_norm in skill_norm or skill_norm in gap_norm:
             return True
     return False
 
@@ -120,7 +122,9 @@ def _format_cv_context(cv: ParsedCV) -> str:
         f"Location: {cv.location or 'N/A'}",
         f"Professional Summary: {cv.summary or 'N/A'}",
         "",
-        "--- SKILLS ALREADY POSSESSED (do NOT list these as gaps) ---",
+        "--- SKILLS ALREADY POSSESSED (do not list these verbatim as gaps; you MAY"
+        " propose a specific certification or advanced specialization that deepens one"
+        " of them — name the credential, not the bare skill) ---",
     ]
 
     if cv.skills:
