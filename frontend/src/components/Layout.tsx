@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router-dom'
 import { BriefcaseIcon, FileTextIcon, LayoutDashboardIcon, MoonIcon, SunIcon, TrendingUpIcon, MenuIcon, XIcon } from 'lucide-react'
 import { fetchInfo } from '../api/client'
+import { BUILD_TIME } from '../version'
 
 const nav = [
   { to: '/',            label: 'Dashboard',   icon: LayoutDashboardIcon },
@@ -33,6 +34,7 @@ export default function Layout() {
           <MenuIcon size={22} />
         </button>
         <span className="text-white font-bold ml-3">CareerOS</span>
+        <span className="text-gray-500 text-[10px] ml-auto" title="Ultimo deploy">agg. {BUILD_TIME}</span>
       </div>
 
       {/* Sfondo scuro quando il menu è aperto (solo mobile) */}
@@ -85,7 +87,7 @@ export default function Layout() {
             </button>
           </div>
           <span className="block text-gray-600 text-[10px] mt-1 truncate" title={info?.model}>
-            v0.1.0 · {info?.model ?? '—'}
+            agg. {BUILD_TIME} · {info?.model ?? '—'}
           </span>
         </div>
       </aside>
