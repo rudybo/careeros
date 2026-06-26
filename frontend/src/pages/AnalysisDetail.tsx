@@ -258,7 +258,7 @@ export default function AnalysisDetail() {
                       return (
                         <li key={k.id} className="flex items-center gap-2 text-xs">
                           <span className={`px-1.5 py-0.5 rounded font-medium shrink-0 ${badge.cls}`}>{badge.label}</span>
-                          <span className="text-gray-600 truncate flex-1 min-w-0">{k.keyword}</span>
+                          <span className="text-gray-600 break-words flex-1 min-w-0">{k.keyword}</span>
                           {k.status === 'added' && (
                             <span className="text-gray-400 shrink-0">
                               {new Date(k.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -343,7 +343,7 @@ export default function AnalysisDetail() {
                     {dismissedItems.map(item => (
                       <li key={item.id} className="flex items-center gap-2 text-xs text-gray-400">
                         <XIcon size={11} className="shrink-0" />
-                        <span className="line-through truncate">{item.action}</span>
+                        <span className="line-through break-words min-w-0 flex-1">{item.action}</span>
                         <button
                           onClick={() => setItemStatus.mutate({ id: item.id, status: 'todo' })}
                           className="ml-auto text-blue-500 hover:underline shrink-0"
