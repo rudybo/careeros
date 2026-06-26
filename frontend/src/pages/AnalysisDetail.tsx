@@ -155,11 +155,11 @@ export default function AnalysisDetail() {
                 {a.skill_gaps.map((gap, i) => (
                   <div key={i} className="p-3 rounded-lg border border-gray-100">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityColor[gap.priority] ?? 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${priorityColor[gap.priority] ?? 'bg-gray-100 text-gray-600'}`}>
                         {gap.priority}
                       </span>
-                      <span className="font-medium text-sm text-gray-900">{gap.skill}</span>
-                      <span className="text-xs text-gray-400 ml-auto">{gap.estimated_time}</span>
+                      <span className="font-medium text-sm text-gray-900 flex-1 min-w-0 break-words">{gap.skill}</span>
+                      <span className="text-xs text-gray-400 shrink-0">{gap.estimated_time}</span>
                     </div>
                     <p className="text-xs text-gray-500">{gap.why_needed}</p>
                     <p className="text-xs text-blue-600 mt-1">→ {gap.how_to_acquire}</p>
