@@ -23,6 +23,21 @@ _STRIP_SUFFIXES = {
 # Default roles when no target_roles are set in preferences
 _DEFAULT_ROLES = ["IT Manager", "Project Manager IT", "Service Manager IT"]
 
+# Indizi testuali di lavoro da remoto (per dare priorità nel pool nazionale)
+_REMOTE_HINTS = ("remot", "smart working", "telelavoro", "full remote", "da remoto", "100% remoto")
+
+
+def _location_pref(prefs: UserPreferences | None) -> tuple[str | None, int | None]:
+    """Città e raggio (km) dalle preferenze. None se città non impostata."""
+    if prefs and prefs.city:
+        return prefs.city.strip(), (prefs.radius_km or 50)
+    return None, None
+
+
+def _remote_likely(o: dict) -> bool:
+    text = f"{o.get('title', '')} {o.get('description', '')}".lower()
+    return any(h in text for h in _REMOTE_HINTS)
+
 
 class ScoutError(Exception):
     pass
@@ -84,7 +99,12 @@ def _parse_adzuna(raw: dict) -> dict:
     }
 
 
-async def _search_adzuna(roles: list[str], salary_min: int | None) -> list[dict]:
+async def _search_adzuna(
+    roles: list[str],
+    salary_min: int | None,
+    where: str | None = None,
+    distance: int | None = None,
+) -> list[dict]:
     results = []
     seen: set[str] = set()
     for role in roles:
@@ -92,6 +112,10 @@ async def _search_adzuna(roles: list[str], salary_min: int | None) -> list[dict]
             params = {"what": role, "results_per_page": 10, "sort_by": "date"}
             if salary_min:
                 params["salary_min"] = salary_min
+            if where:
+                params["where"] = where
+                if distance:
+                    params["distance"] = distance  # raggio in km dalla città
             raw_list = await _fetch_adzuna(params)
             for r in raw_list:
                 parsed = _parse_adzuna(r)
@@ -105,7 +129,11 @@ async def _search_adzuna(roles: list[str], salary_min: int | None) -> list[dict]
 
 # ── Jooble ────────────────────────────────────────────────────────────────────
 
-async def _search_jooble(roles: list[str]) -> list[dict]:
+async def _search_jooble(
+    roles: list[str],
+    location: str = "Italia",
+    radius: int | None = None,
+) -> list[dict]:
     if not settings.jooble_api_key:
         return []
     results = []
@@ -113,9 +141,12 @@ async def _search_jooble(roles: list[str]) -> list[dict]:
     async with httpx.AsyncClient(timeout=20) as client:
         for role in roles:
             try:
+                body = {"keywords": role, "location": location, "page": 1, "ResultOnPage": 10}
+                if radius:
+                    body["radius"] = str(radius)  # raggio in km dalla località
                 resp = await client.post(
                     f"{_JOOBLE_BASE}/{settings.jooble_api_key}",
-                    json={"keywords": role, "location": "Italia", "page": 1, "ResultOnPage": 10},
+                    json=body,
                 )
                 resp.raise_for_status()
                 jobs = resp.json().get("jobs", [])
@@ -211,47 +242,84 @@ async def _rank_opportunity(candidate_ctx: str, opp: dict) -> dict:
 
 # ── Main search ───────────────────────────────────────────────────────────────
 
+def _priority(o: dict) -> int:
+    return (1 if o.get("description") else 0) + (1 if o.get("salary_min") or o.get("salary_max") else 0)
+
+
 async def search(cv: ParsedCV, prefs: UserPreferences | None) -> list[dict]:
     roles = _get_search_roles(cv, prefs)
     salary_min = int(prefs.ral_min / 12) if prefs and prefs.ral_min else None
+    city, radius = _location_pref(prefs)
     candidate_ctx = _build_candidate_context(cv, prefs)
 
-    logger.info("Hermes: ricerca per ruoli %s", roles)
+    logger.info("Iris: ricerca ruoli %s (città=%s, raggio=%s km)", roles, city or "tutta Italia", radius)
 
-    # Fetch from all sources in parallel
-    adzuna_results, jooble_results = await _gather_sources(roles, salary_min)
+    # Due pool: 'near' = entro il raggio dalla città; 'remote' = nazionale (solo
+    # remoto, tenuto a prescindere dalla distanza). Senza città → un solo pool.
+    near_raw, remote_raw = await _gather_sources(roles, salary_min, city, radius)
 
-    seen_ids: set[str] = set()
-    raw_results: list[dict] = []
-    for opp in adzuna_results + jooble_results:
-        if opp["external_id"] and opp["external_id"] not in seen_ids:
-            seen_ids.add(opp["external_id"])
-            raw_results.append(opp)
+    seen: set[str] = set()
+    geo_ids: set[str] = set()
+    near: list[dict] = []
+    for opp in near_raw:
+        eid = opp["external_id"]
+        if eid and eid not in seen:
+            seen.add(eid)
+            geo_ids.add(eid)
+            near.append(opp)
+    remote: list[dict] = []
+    for opp in remote_raw:
+        eid = opp["external_id"]
+        if eid and eid not in seen:
+            seen.add(eid)
+            remote.append(opp)
 
-    if not raw_results:
+    if not near and not remote:
         raise ScoutError("Nessun risultato trovato. Controlla le credenziali API o modifica i ruoli target.")
 
-    # Cap at 30 before Ollama ranking — prioritize entries with description and salary
-    def _priority(o: dict) -> int:
-        return (1 if o.get("description") else 0) + (1 if o.get("salary_min") or o.get("salary_max") else 0)
-    raw_results.sort(key=_priority, reverse=True)
-    to_rank = raw_results[:30]
+    near.sort(key=_priority, reverse=True)
+    # Nel pool nazionale, dai priorità a chi sembra remoto (così il budget di
+    # ranking, limitato, colpisce le offerte davvero remote).
+    remote.sort(key=lambda o: (_remote_likely(o), _priority(o)), reverse=True)
 
-    logger.info("Iris: %d offerte uniche → ranking Ollama su %d...", len(raw_results), len(to_rank))
+    # Budget ranking: 30 totali, ma riserva spazio al remoto quando c'è una città
+    to_rank = near[:22] if city else near[:30]
+    to_rank += remote[: 30 - len(to_rank)]
+
+    logger.info("Iris: %d vicine + %d nazionali → ranking su %d...", len(near), len(remote), len(to_rank))
 
     ranked = []
     for opp in to_rank:
         ranked.append(await _rank_opportunity(candidate_ctx, opp))
 
+    # Con città impostata: tieni le offerte nel raggio (qualsiasi modalità) e,
+    # dal pool nazionale, SOLO quelle che l'LLM ha classificato come remote.
+    if city:
+        ranked = [o for o in ranked if o["external_id"] in geo_ids or o.get("work_mode") == "remote"]
+
     ranked.sort(key=lambda x: x.get("match_score") or 0, reverse=True)
-    logger.info("Hermes completato: %d offerte rankate", len(ranked))
+    logger.info("Iris completato: %d offerte rankate (post-filtro)", len(ranked))
     return ranked
 
 
-async def _gather_sources(roles: list[str], salary_min: int | None) -> tuple[list[dict], list[dict]]:
+async def _gather_sources(
+    roles: list[str], salary_min: int | None, city: str | None, radius: int | None
+) -> tuple[list[dict], list[dict]]:
+    """Ritorna (offerte_vicine, offerte_remote_nazionali). Senza città la prima
+    contiene tutto e la seconda è vuota (nessun filtro distanza)."""
     import asyncio
-    adzuna_task = asyncio.create_task(_search_adzuna(roles, salary_min))
-    jooble_task = asyncio.create_task(_search_jooble(roles))
-    adzuna_results = await adzuna_task
-    jooble_results = await jooble_task
-    return adzuna_results, jooble_results
+
+    if not city:
+        adzuna, jooble = await asyncio.gather(
+            _search_adzuna(roles, salary_min),
+            _search_jooble(roles),
+        )
+        return adzuna + jooble, []
+
+    near_adzuna, near_jooble, far_adzuna, far_jooble = await asyncio.gather(
+        _search_adzuna(roles, salary_min, where=city, distance=radius),
+        _search_jooble(roles, location=city, radius=radius),
+        _search_adzuna(roles, salary_min),          # nazionale → pool remoto
+        _search_jooble(roles, location="Italia"),   # nazionale → pool remoto
+    )
+    return near_adzuna + near_jooble, far_adzuna + far_jooble

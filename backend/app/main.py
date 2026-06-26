@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,12 @@ async def _scheduled_market_search() -> None:
 async def lifespan(app: FastAPI):
     await init_db()
     await _reset_stuck_drafts()
-    scheduler = AsyncIOScheduler()
+    # Fuso esplicito: il server gira in UTC, ma vogliamo 08:00 e 19:00 ITALIANE
+    scheduler = AsyncIOScheduler(timezone=ZoneInfo("Europe/Rome"))
     scheduler.add_job(_scheduled_market_search, "cron", hour=8,  minute=0, id="iris_morning")
     scheduler.add_job(_scheduled_market_search, "cron", hour=19, minute=0, id="iris_evening")
     scheduler.start()
-    logger.info("Iris scheduler avviata: 08:00 e 19:00")
+    logger.info("Iris scheduler avviata: 08:00 e 19:00 (Europe/Rome)")
 
     import asyncio
     from app.services import telegram_service

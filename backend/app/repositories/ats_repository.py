@@ -14,6 +14,56 @@ def _present(keyword: str, text: str) -> bool:
     return re.search(r"\b" + re.escape(keyword.lower()) + r"\b", text.lower()) is not None
 
 
+# Varianti/sinonimi → forma canonica (chiavi e valori normalizzati, minuscolo).
+# Serve a riconoscere keyword equivalenti in lingue diverse o riformulate.
+_SYNONYMS = {
+    "intelligenza artificiale": "artificial intelligence",
+    "ia": "artificial intelligence",
+    "ai": "artificial intelligence",
+    "apprendimento automatico": "machine learning",
+    "sicurezza informatica": "cybersecurity",
+    "cyber security": "cybersecurity",
+    "tecnologie cloud": "cloud computing",
+    "cloud": "cloud computing",
+    "gestione di progetti it": "project management",
+    "gestione progetti it": "project management",
+    "gestione di progetti": "project management",
+    "gestione progetti": "project management",
+    "gestione del rischio": "risk management",
+    "architettura di sistema": "system architecture",
+    "internet delle cose": "iot",
+    "internet of things": "iot",
+    "scienza dei dati": "data science",
+    "analisi dei dati": "data analytics",
+}
+
+# Parole "qualificatore": non cambiano il concetto base, vanno rimosse prima
+# del confronto (es. "cybersecurity avanzata"/"cybersecurity framework" →
+# "cybersecurity").
+_QUALIFIERS = {
+    "avanzata", "avanzato", "avanzate", "avanzati",
+    "framework", "methodology", "metodologia", "metodologie",
+    "base", "fondamentali", "fondamenti", "approfondita", "approfondito",
+}
+
+
+def _normalize(text: str) -> str:
+    norm = re.sub(r"[^\w\s]", " ", (text or "").lower())
+    return re.sub(r"\s+", " ", norm).strip()
+
+
+def _canonical(keyword: str) -> str:
+    """Chiave canonica per riconoscere keyword equivalenti anche se in lingue
+    diverse o con qualificatori. Es: 'Cybersecurity Avanzata' e 'cybersecurity
+    framework' → 'cybersecurity'; 'intelligenza artificiale' e 'artificial
+    intelligence' → 'artificial intelligence'; 'agile' e 'agile methodology' →
+    'agile'."""
+    norm = _SYNONYMS.get(_normalize(keyword), _normalize(keyword))
+    tokens = [t for t in norm.split() if t not in _QUALIFIERS]
+    norm = " ".join(tokens)
+    return _SYNONYMS.get(norm, norm)
+
+
 class AtsKeywordRepository:
     """Lista keyword ATS a livello di CARRIERA (unica, non per singolo CV).
     Il cv_id sui record indica solo da quale CV è emersa la keyword."""
@@ -73,6 +123,42 @@ class AtsKeywordRepository:
             added += 1
         if added:
             await self._session.commit()
+        return added
+
+    async def replace_todos(self, cv_id: int, keywords: list[dict], cv_text: str = "") -> int:
+        """Sostituisce le keyword 'todo' con quelle dell'ultima analisi. Mantiene
+        'added'/'ignored'/'gap' (storico). Dedup per chiave CANONICA (gestisce
+        coppie IT/EN, qualificatori e radici comuni) e scarta le keyword la cui
+        forma canonica è già presente nel CV o già gestita. Ritorna i nuovi todo."""
+        existing = await self.get_all()
+        kept_canon: set[str] = set()
+        for it in existing:
+            if it.status in ("added", "ignored", "gap"):
+                kept_canon.add(_canonical(it.keyword))
+            else:
+                await self._session.delete(it)
+
+        seen = set(kept_canon)
+        added = 0
+        for kw in keywords:
+            keyword = (kw.get("keyword") or "").strip()
+            if not keyword:
+                continue
+            canon = _canonical(keyword)
+            if not canon or canon in seen:
+                continue
+            if _present(canon, cv_text) or _present(keyword, cv_text):
+                continue
+            seen.add(canon)
+            self._session.add(AtsKeywordItem(
+                cv_id=cv_id,
+                keyword=keyword,
+                reason=kw.get("reason"),
+                status="todo",
+                fingerprint=canon,
+            ))
+            added += 1
+        await self._session.commit()
         return added
 
     async def get_handled(self) -> list[str]:

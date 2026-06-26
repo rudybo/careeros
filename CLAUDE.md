@@ -2,6 +2,8 @@
 
 Piattaforma AI per la carriera: parsing CV, analisi strategica (agente Minerva), Market Scout, candidature, bot Telegram.
 
+> Documentazione tecnica completa (stack, endpoint, DB, agenti, deploy): [`overview.md`](overview.md)
+
 ## Stack
 - **Frontend:** React + TypeScript + Vite + Tailwind (dark mode `class`). Dir `frontend/`.
 - **Backend:** Python 3.12 (venv via `uv`) + FastAPI + uvicorn + SQLAlchemy async. Dir `backend/`, app `app.main:app`.

@@ -45,9 +45,10 @@ async def _run_analysis(analysis_id: int, cv_id: int, cv_parsed_data: dict) -> N
 
             # Auto-rilevamento: ciò che hai inserito nel nuovo CV risulta "aggiunto"
             auto = await ats_repo.mark_present_as_added(cv_text)
-            # Aggiunge solo le novità (non già in lista e non già presenti nel CV)
-            added = await roadmap_repo.merge_steps(cv_id, result.get("roadmap", []))
-            added_ats = await ats_repo.merge_keywords(cv_id, result.get("ats_keywords", []), cv_text)
+            # La roadmap riflette l'ultima analisi: i 'todo' vengono sostituiti
+            # (fatti/annullati restano nello storico e non vengono riproposti)
+            added = await roadmap_repo.replace_todos(cv_id, result.get("roadmap", []))
+            added_ats = await ats_repo.replace_todos(cv_id, result.get("ats_keywords", []), cv_text)
             logger.info("Analisi completata: analysis_id=%d, +%d attività, +%d keyword (auto-aggiunte %d)",
                         analysis_id, added, added_ats, auto)
         except Exception as e:
@@ -165,7 +166,7 @@ async def get_ats_keywords(cv_id: int, db: AsyncSession = Depends(get_db)):
         if latest and latest.analysis_data:
             keywords = json.loads(latest.analysis_data).get("ats_keywords", [])
             if keywords:
-                await repo.merge_keywords(cv_id, keywords)
+                await repo.replace_todos(cv_id, keywords)
                 items = await repo.get_all()
     return items
 

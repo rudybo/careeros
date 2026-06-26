@@ -9,6 +9,7 @@ import { SearchIcon, BookmarkIcon, XCircleIcon, ExternalLinkIcon, Loader2Icon, S
 import type { UserPreferences } from '../types'
 import AgentBubble from '../components/AgentBubble'
 
+const MIN_MATCH = 60  // soglia minima di match% per mostrare un'offerta nella vista principale
 const WORK_MODE_LABELS: Record<string, string> = { remote: 'Remoto', hybrid: 'Ibrido', onsite: 'In sede' }
 const SCORE_COLOR = (s: number) => s >= 70 ? 'text-green-600 bg-green-50' : s >= 45 ? 'text-yellow-600 bg-yellow-50' : 'text-red-500 bg-red-50'
 
@@ -133,6 +134,7 @@ export default function MarketPage() {
   const qc = useQueryClient()
   const [showPrefs, setShowPrefs] = useState(false)
   const [activeFilter, setActiveFilter] = useState<string | undefined>(undefined)
+  const [sourceFilter, setSourceFilter] = useState<string | undefined>(undefined)
 
   const { data: cvs = [] } = useQuery({ queryKey: ['cvs'], queryFn: fetchCVList })
   const parsedCV = cvs.find(c => c.status === 'parsed')
@@ -143,9 +145,11 @@ export default function MarketPage() {
     refetchInterval: (q) => q.state.data?.running ? 3000 : false,
   })
 
+  // Con un filtro fonte attivo carichiamo di più (100) per non restare al Top 10
+  const wantAll = (!!activeFilter && activeFilter !== 'new') || !!sourceFilter
   const { data: opportunities = [], isLoading } = useQuery({
-    queryKey: ['opportunities', activeFilter],
-    queryFn: () => fetchOpportunities(activeFilter, activeFilter && activeFilter !== 'new' ? 100 : 10),
+    queryKey: ['opportunities', activeFilter, sourceFilter],
+    queryFn: () => fetchOpportunities(activeFilter, wantAll ? 100 : 10),
     refetchInterval: (q) => {
       const opps = q.state.data ?? []
       const hasGenerating = opps.some((o: any) => o.draft_status === 'generating')
@@ -191,6 +195,16 @@ export default function MarketPage() {
     { value: 'applied', label: 'Candidato' },
     { value: 'dismissed', label: 'Scartate' },
   ]
+  const sources = [
+    { value: undefined, label: 'Tutte le fonti' },
+    { value: 'adzuna', label: 'Adzuna' },
+    { value: 'jooble', label: 'Jooble' },
+  ]
+  // Soglia minima di match: sotto il 60% non mostriamo (match basso = difficile assunzione).
+  // Vale solo per Tutte/Nuove; le viste manuali (Salvate/Candidato/Scartate) restano integre.
+  const scoreGated = !activeFilter || activeFilter === 'new'
+  const visibleOpps = (sourceFilter ? opportunities.filter(o => o.source === sourceFilter) : opportunities)
+    .filter(o => !scoreGated || (o.match_score ?? 0) >= MIN_MATCH)
 
   return (
     <div className="p-4 pb-24 md:p-8 max-w-4xl">
@@ -223,7 +237,7 @@ export default function MarketPage() {
 
       {/* Filter tabs — always visible after first search */}
       {searchStatus !== undefined && (
-        <div className="mb-4">
+        <div className="mb-4 space-y-2">
           <div className="flex flex-wrap gap-1">
             {filters.map(f => (
               <button key={String(f.value)} onClick={() => setActiveFilter(f.value)}
@@ -235,9 +249,21 @@ export default function MarketPage() {
                 {f.label}
               </button>
             ))}
-            {(!activeFilter || activeFilter === 'new') && opportunities.length > 0 && (
+            {!sourceFilter && (!activeFilter || activeFilter === 'new') && opportunities.length > 0 && (
               <span className="text-xs text-gray-400 self-center ml-auto hidden sm:block">Top 10 per match score</span>
             )}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {sources.map(s => (
+              <button key={String(s.value)} onClick={() => setSourceFilter(s.value)}
+                className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                  sourceFilter === s.value
+                    ? 'bg-violet-600 text-white border-violet-600'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300'
+                }`}>
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -245,14 +271,20 @@ export default function MarketPage() {
       {/* Opportunities list */}
       {isLoading ? (
         <div className="text-center text-gray-400 py-12 text-sm">Caricamento...</div>
-      ) : opportunities.length === 0 && !isRunning ? (
+      ) : visibleOpps.length === 0 && !isRunning ? (
         <div className="text-center py-16 text-gray-400">
           <SearchIcon size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Nessuna offerta trovata. Avvia una ricerca!</p>
+          <p className="text-sm">
+            {scoreGated && opportunities.length > 0
+              ? `Nessuna offerta sopra il ${MIN_MATCH}% di match.`
+              : sourceFilter
+              ? `Nessuna offerta da ${sourceFilter} con questo filtro.`
+              : 'Nessuna offerta trovata. Avvia una ricerca!'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {opportunities.map(opp => (
+          {visibleOpps.map(opp => (
             <div key={opp.id} className={`bg-white rounded-xl border p-5 transition-opacity ${
               opp.status === 'dismissed' ? 'opacity-40 border-gray-100' : 'border-gray-200'
             }`}>

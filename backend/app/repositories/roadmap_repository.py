@@ -63,6 +63,42 @@ class RoadmapRepository:
             await self._session.commit()
         return added
 
+    async def replace_todos(self, cv_id: int, steps: list[dict]) -> int:
+        """Sostituisce i 'todo' della roadmap con gli step della nuova analisi.
+        Mantiene intatte le voci 'done'/'dismissed' (storico) e NON ripropone uno
+        step che combacia (per fingerprint) con una voce già fatta o annullata.
+        Ritorna il numero di nuovi 'todo' inseriti."""
+        existing = await self.get_all()
+        kept_fps: set[str] = set()
+        for it in existing:
+            if it.status in ("done", "dismissed"):
+                kept_fps.add(it.fingerprint)
+            else:
+                await self._session.delete(it)
+
+        seen = set(kept_fps)
+        added = 0
+        for step in steps:
+            action = step.get("action", "").strip()
+            if not action:
+                continue
+            fp = _fingerprint(action)
+            if fp in seen:
+                continue
+            seen.add(fp)
+            self._session.add(RoadmapItem(
+                cv_id=cv_id,
+                action=action,
+                category=step.get("category", "skill"),
+                impact=step.get("impact"),
+                timeframe=step.get("timeframe"),
+                status="todo",
+                fingerprint=fp,
+            ))
+            added += 1
+        await self._session.commit()
+        return added
+
     async def get_done_and_dismissed(self) -> tuple[list[str], list[str]]:
         """Ritorna (azioni completate, azioni annullate) per informare il modello."""
         items = await self.get_all()
