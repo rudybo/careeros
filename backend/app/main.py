@@ -32,18 +32,27 @@ async def _reset_stuck_drafts() -> None:
 
 
 async def _scheduled_market_search() -> None:
-    """Run Hermes market search automatically (called by scheduler)."""
+    """Ricerca offerte automatica (scheduler). Logga avvio/esito, registra lo
+    stato persistente e manda una conferma su Telegram (anche con 0 nuove)."""
     import json
+    from datetime import datetime
     from app.agents.market_scout import agent as scout
+    from app.core import task_state
     from app.repositories.cv_repository import CVRepository
     from app.repositories.market_repository import OpportunityRepository, PreferencesRepository
     from app.schemas.cv import ParsedCV
+    from app.services import telegram_service
+
+    now = datetime.now(ZoneInfo("Europe/Rome")).strftime("%H:%M")
+    logger.info("Iris scheduler: AVVIO ricerca automatica (%s)", now)
     async with AsyncSessionLocal() as session:
         cv_repo = CVRepository(session)
         cvs = await cv_repo.get_all()
         parsed = next((c for c in cvs if c.status == "parsed" and c.parsed_data), None)
         if not parsed:
-            logger.warning("Hermes scheduler: nessun CV parsato trovato, skip.")
+            logger.warning("Iris scheduler: nessun CV parsato trovato, skip.")
+            task_state.record_search(trigger="auto", error="nessun CV parsato")
+            await telegram_service.send_text(f"⚠️ Ricerca automatica {now}: nessun CV parsato, saltata.")
             return
         prefs_repo = PreferencesRepository(session)
         opp_repo = OpportunityRepository(session)
@@ -52,11 +61,17 @@ async def _scheduled_market_search() -> None:
             prefs = await prefs_repo.get()
             results = await scout.search(cv, prefs)
             created, skipped = await opp_repo.upsert_many(results)
-            logger.info("Hermes scheduler: %d nuove offerte, %d già presenti", created, skipped)
-            from app.services import telegram_service
-            await telegram_service.notify_new_opportunities()
+            logger.info("Iris scheduler: COMPLETATA — %d nuove, %d già presenti", created, skipped)
+            task_state.record_search(trigger="auto", created=created, skipped=skipped)
+            sent = await telegram_service.notify_new_opportunities()
+            msg = f"🔍 Ricerca automatica {now}: <b>{created}</b> nuove, {skipped} già viste"
+            if sent:
+                msg += f" · {sent} sopra soglia inviate ⬆️"
+            await telegram_service.send_text(msg)
         except Exception as e:
-            logger.error("Hermes scheduler errore: %s", e, exc_info=True)
+            logger.error("Iris scheduler errore: %s", e, exc_info=True)
+            task_state.record_search(trigger="auto", error=str(e))
+            await telegram_service.send_text(f"⚠️ Ricerca automatica {now} non riuscita: {str(e)[:150]}")
 
 
 @asynccontextmanager
@@ -68,16 +83,32 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_market_search, "cron", hour=8,  minute=0, id="iris_morning")
     scheduler.add_job(_scheduled_market_search, "cron", hour=19, minute=0, id="iris_evening")
     scheduler.start()
+    app.state.scheduler = scheduler  # per l'health-check /system/health
     logger.info("Iris scheduler avviata: 08:00 e 19:00 (Europe/Rome)")
 
     import asyncio
-    from app.services import telegram_service
-    telegram_task = asyncio.create_task(telegram_service.poll_loop())
+    telegram_task = asyncio.create_task(_telegram_supervisor())
 
     yield
 
     telegram_task.cancel()
     scheduler.shutdown(wait=False)
+
+
+async def _telegram_supervisor() -> None:
+    """Tiene vivo il poller Telegram: se crasha (eccezione non gestita) lo
+    riavvia, così non muore in silenzio. Esce solo se cancellato allo shutdown."""
+    import asyncio
+    from app.services import telegram_service
+    while True:
+        try:
+            await telegram_service.poll_loop()
+            return  # ritorno pulito (token assente o cancellazione interna)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.error("Telegram poller crashato, riavvio tra 10s: %s", e, exc_info=True)
+            await asyncio.sleep(10)
 
 
 app = FastAPI(

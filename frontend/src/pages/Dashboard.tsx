@@ -1,10 +1,86 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, type ReactNode } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { fetchCVList, fetchApplicationList } from '../api/client'
-import { BriefcaseIcon, FileTextIcon, TrendingUpIcon, TargetIcon, XIcon } from 'lucide-react'
+import { fetchCVList, fetchApplicationList, fetchSystemHealth, restartSystem } from '../api/client'
+import { BriefcaseIcon, FileTextIcon, TrendingUpIcon, TargetIcon, XIcon, ActivityIcon, RotateCwIcon, CheckCircle2Icon, AlertTriangleIcon, Loader2Icon } from 'lucide-react'
 import AgentAvatar from '../components/AgentAvatar'
 import type { JobApplication } from '../types'
+
+const fmtDate = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+
+function HealthRow({ label, ok, children }: { label: string; ok: boolean | null; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${ok === null ? 'bg-gray-300' : ok ? 'bg-green-500' : 'bg-red-500'}`} />
+      <span className="text-gray-500 w-28 shrink-0">{label}</span>
+      <span className="text-gray-700 truncate">{children}</span>
+    </div>
+  )
+}
+
+function SystemHealthPanel() {
+  const qc = useQueryClient()
+  const [restarting, setRestarting] = useState(false)
+  const { data: health } = useQuery({
+    queryKey: ['health'],
+    queryFn: fetchSystemHealth,
+    refetchInterval: restarting ? false : 20000,
+  })
+  const restart = useMutation({
+    mutationFn: restartSystem,
+    onSuccess: () => {
+      setRestarting(true)
+      setTimeout(() => { setRestarting(false); qc.invalidateQueries({ queryKey: ['health'] }) }, 12000)
+    },
+  })
+
+  const nextRun = (health?.scheduler.jobs ?? []).map(j => j.next_run).filter(Boolean).sort()[0]
+  const overall: boolean | null = restarting ? null : (health?.ok ?? null)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+          <ActivityIcon size={16} className="text-gray-400" /> Stato sistema
+        </h2>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+            restarting ? 'bg-blue-50 text-blue-600' : overall ? 'bg-green-50 text-green-700' : overall === false ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {restarting ? <><Loader2Icon size={12} className="animate-spin" /> Riavvio…</>
+              : overall ? <><CheckCircle2Icon size={12} /> Operativo</>
+              : overall === false ? <><AlertTriangleIcon size={12} /> Problema</>
+              : 'Caricamento…'}
+          </span>
+          <button onClick={() => { if (window.confirm('Riavviare il backend? Richiede ~10 secondi.')) restart.mutate() }}
+            disabled={restarting || restart.isPending}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-50">
+            <RotateCwIcon size={13} /> Riavvia
+          </button>
+        </div>
+      </div>
+      {restarting ? (
+        <p className="text-sm text-gray-400">Riavvio in corso, attendi qualche secondo…</p>
+      ) : (
+        <div className="space-y-2">
+          <HealthRow label="Motore AI" ok={health ? true : null}>
+            {health ? `${health.llm.provider} · ${health.llm.model}` : '—'}
+          </HealthRow>
+          <HealthRow label="Ricerca auto" ok={health?.scheduler.running ?? null}>
+            {health?.scheduler.running ? `attiva · prossima ${fmtDate(nextRun)}` : 'non attiva'}
+          </HealthRow>
+          <HealthRow label="Telegram" ok={health ? (health.telegram.alive || !health.telegram.enabled) : null}>
+            {!health ? '—' : !health.telegram.enabled ? 'non configurato' : health.telegram.alive ? `connesso · ultimo controllo ${health.telegram.seconds_ago}s fa` : 'bloccato'}
+          </HealthRow>
+          <HealthRow label="Ultima ricerca" ok={health?.last_search ? !health.last_search.error : null}>
+            {health?.last_search ? `${fmtDate(health.last_search.at)} · ${health.last_search.error ? 'errore' : `${health.last_search.created} nuove`}` : 'nessuna ancora'}
+          </HealthRow>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const AGENTS = [
   {
@@ -123,6 +199,9 @@ export default function Dashboard() {
           )
         })}
       </div>
+
+      {/* Stato sistema */}
+      <SystemHealthPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent CVs */}

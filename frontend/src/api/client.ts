@@ -8,6 +8,18 @@ export interface SystemInfo { provider: string; model: string; version: string }
 export const fetchInfo = () =>
   api.get<SystemInfo>('/info').then(r => r.data)
 
+export interface SystemHealth {
+  ok: boolean
+  llm: { provider: string; model: string }
+  scheduler: { running: boolean; jobs: { id: string; next_run: string | null }[] }
+  telegram: { enabled: boolean; last_poll_at: string | null; seconds_ago: number | null; alive: boolean }
+  last_search: LastRun | null
+}
+export const fetchSystemHealth = () =>
+  api.get<SystemHealth>('/system/health').then(r => r.data)
+export const restartSystem = () =>
+  api.post('/system/restart')
+
 // ── CV ────────────────────────────────────────────────────────────────────────
 export const uploadCV = (file: File) => {
   const form = new FormData()
@@ -80,8 +92,9 @@ export const savePreferences = (data: Partial<UserPreferences>) =>
 export const startMarketSearch = (cvId: number) =>
   api.post(`/market/search?cv_id=${cvId}`)
 
+export interface LastRun { at: string; trigger: string; created: number; skipped: number; error: string | null }
 export const fetchSearchStatus = () =>
-  api.get<{ running: boolean; last_error: string | null; last_count: number | null }>('/market/search/status').then(r => r.data)
+  api.get<{ running: boolean; last_error: string | null; last_count: number | null; last_run: LastRun | null }>('/market/search/status').then(r => r.data)
 
 export const fetchOpportunities = (statusFilter?: string, limit: number = 10) =>
   api.get<JobOpportunity[]>('/market/opportunities', { params: { ...(statusFilter ? { status_filter: statusFilter } : {}), limit } }).then(r => r.data)

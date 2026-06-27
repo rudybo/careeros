@@ -68,13 +68,19 @@ async def _run_search(cv_parsed_data: dict) -> None:
             _last_search_count = created
             _last_search_error = None
             logger.info("Market Scout: %d nuove offerte, %d gia presenti", created, skipped)
+            from app.core import task_state
+            task_state.record_search(trigger="manuale", created=created, skipped=skipped)
             from app.services import telegram_service
             await telegram_service.notify_new_opportunities()
         except ScoutError as e:
             _last_search_error = str(e)
+            from app.core import task_state
+            task_state.record_search(trigger="manuale", error=str(e))
             logger.error("Market Scout fallito: %s", e)
         except Exception as e:
             _last_search_error = f"Errore inatteso: {e}"
+            from app.core import task_state
+            task_state.record_search(trigger="manuale", error=str(e))
             logger.error("Market Scout errore inatteso: %s", e, exc_info=True)
         finally:
             _search_running = False
@@ -123,7 +129,13 @@ async def start_search(background_tasks: BackgroundTasks, cv_id: int = 1, db: As
 
 @router.get("/search/status")
 async def search_status():
-    return {"running": _search_running, "last_error": _last_search_error, "last_count": _last_search_count}
+    from app.core import task_state
+    return {
+        "running": _search_running,
+        "last_error": _last_search_error,
+        "last_count": _last_search_count,
+        "last_run": task_state.get().get("last_search"),
+    }
 
 
 @router.get("/opportunities", response_model=list[JobOpportunityResponse])

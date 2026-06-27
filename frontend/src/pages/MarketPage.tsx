@@ -5,7 +5,7 @@ import {
   savePreferences, startMarketSearch, updateOpportunityStatus, fetchCVList,
   createOpportunityDraft,
 } from '../api/client'
-import { SearchIcon, BookmarkIcon, XCircleIcon, ExternalLinkIcon, Loader2Icon, SlidersIcon, ChevronDownIcon, ChevronUpIcon, MailIcon, CheckCircleIcon, SendIcon } from 'lucide-react'
+import { SearchIcon, BookmarkIcon, XCircleIcon, ExternalLinkIcon, Loader2Icon, SlidersIcon, ChevronDownIcon, ChevronUpIcon, MailIcon, CheckCircleIcon, SendIcon, ClockIcon } from 'lucide-react'
 import type { UserPreferences } from '../types'
 import AgentBubble from '../components/AgentBubble'
 
@@ -232,6 +232,20 @@ export default function MarketPage() {
       </div>
 
       <AgentBubble name="Iris" active={isRunning} message={irisMessage} />
+
+      {/* Indicatore: ultima ricerca eseguita (auto o manuale) — sopravvive ai riavvii */}
+      {searchStatus?.last_run && (
+        <div className="mt-3 flex items-center gap-1.5 flex-wrap text-xs text-gray-400">
+          <ClockIcon size={12} className="shrink-0" />
+          <span>
+            Ultima ricerca {searchStatus.last_run.trigger === 'auto' ? 'automatica' : 'manuale'}:{' '}
+            {new Date(searchStatus.last_run.at).toLocaleString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {searchStatus.last_run.error
+            ? <span className="text-red-400">· non riuscita</span>
+            : <span>· <span className="text-gray-500 font-medium">{searchStatus.last_run.created}</span> nuove</span>}
+        </div>
+      )}
 
       {showPrefs && <PreferencesPanel onClose={() => setShowPrefs(false)} />}
 

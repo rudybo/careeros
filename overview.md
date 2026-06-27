@@ -40,7 +40,7 @@ CareerOS/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/                # 8 pagine React
+│   │   ├── pages/                # 9 pagine React
 │   │   ├── components/           # Layout, StatusBadge, AgentBubble
 │   │   ├── api/client.ts         # Axios wrapper
 │   │   └── types/index.ts        # TypeScript interfaces
@@ -64,7 +64,7 @@ Base path: `http://localhost:8000/api/v1`
 | Metodo | Path | Scopo |
 |--------|------|-------|
 | `POST` | `/cv/upload` | Carica PDF/DOCX → estrae testo → salva con status `uploaded` |
-| `POST` | `/cv/{cv_id}/parse` | Parsing LLM in background → 202 Accepted |
+| `POST` | `/cv/{cv_id}/parse` | Parsing LLM in background → 202. A parsing riuscito avvia **automaticamente** l'analisi carriera |
 | `GET` | `/cv/{cv_id}` | Dettaglio CV con `parsed_data` e status |
 | `GET` | `/cv/` | Lista tutti i CV |
 | `DELETE` | `/cv/{cv_id}` | Elimina CV + candidature in cascade |
@@ -202,7 +202,8 @@ Input: ParsedCV + roadmap done/dismissed + keyword ATS handled
 - Identifica skill gap con priorità, timeframe e risorse
 - Genera roadmap ordinata per priorità
 - Suggerisce keyword ATS
-- Guardrails: non ripropone gap già nel CV, deduplica roadmap per fingerprint
+- Guardrails: ammette gap di **approfondimento** (certificazioni sopra skill già possedute), scarta solo i gap identici a una skill del CV
+- Roadmap e keyword ATS **sostituiscono** i `todo` ad ogni analisi (no accumulo); le voci done/dismissed/added restano. Keyword deduplicate per forma canonica (sinonimi IT/EN, qualificatori)
 
 ### Vera — CV Expert (`agents/cv_expert/`)
 Input: ParsedCV + job_description
@@ -224,11 +225,12 @@ Input: ParsedCV + company + role + job_description + ottimizzazione Vera (opz.)
 ### Iris — Market Scout (`agents/market_scout/`)
 Input: ParsedCV + UserPreferences
 
-- Ricerca su Adzuna e Jooble
+- Ricerca su Adzuna e Jooble (architettura pluggabile: ogni fonte = `_fetch_*`/`_parse_*` + task in `_gather_sources`)
+- **Filtro geografico**: con città impostata due pool → "vicine" (entro `radius_km`, via Adzuna `where`/`distance` e Jooble `location`/`radius`) + pool "nazionale" tenuto solo se l'offerta è **remota**
 - Estrae offerte: titolo, company, location, URL, salary, descrizione
 - Calcola match_score tramite Vera
 - Scheduler APScheduler: cron 08:00 + 19:00 Europe/Rome
-- Notifica su Telegram le offerte non notificate con match ≥ soglia (default 70%)
+- Notifica su Telegram le offerte non notificate con match ≥ `TELEGRAM_MIN_SCORE` (default 70%)
 
 ---
 
@@ -247,12 +249,13 @@ Input: ParsedCV + UserPreferences
 | Pagina | Scopo |
 |--------|-------|
 | `Dashboard.tsx` | Overview: count CV, distribuzione status candidature, lista agenti |
-| `CVPage.tsx` | Upload drag-and-drop, lista CV con status badge, polling su "parsing" |
-| `CVDetail.tsx` | Parsed CV (nome, email, skills, esperienze, educazione, certificati), pulsante "Analizza Carriera" |
-| `AnalysisDetail.tsx` | Risultati Minerva: target roles, skill gaps, roadmap persistente, keyword ATS |
+| `CVPage.tsx` | Pagina **Curriculum** = analisi del CV corrente (executive summary, ruoli target, skills/esperienze/formazione). "Nuovo curriculum" → upload → analisi **automatica**. Stato vuoto se nessun CV. 3 bottoni: Nuovo curriculum, Attività, Storico |
+| `CVHistory.tsx` | **Storico** caricamenti (`/cv/storico`): lista CV discendente, CV attivo evidenziato, cestino, "rianalizza" sull'ultimo. Sola lettura |
+| `CVDetail.tsx` | Vista storica **read-only** di un CV (raggiunta dallo Storico): parsed data + analisi completata |
+| `AnalysisDetail.tsx` | Risultati Minerva di una singola analisi: executive summary + ruoli target + link alle Attività |
 | `ApplicationsPage.tsx` | Lista candidature con bottoni lifecycle |
 | `ApplicationDetail.tsx` | Form job description, match_score bar, keyword diff, ATS warnings, cover letter |
-| `MarketPage.tsx` | Preferenze ricerca, lista offerte per match score, filtri status e fonte (Adzuna/Jooble) |
+| `MarketPage.tsx` | Preferenze ricerca, lista offerte per match score, filtri status e fonte (Adzuna/Jooble), soglia minima match **60%** nelle viste Tutte/Nuove |
 | `Attivita.tsx` | Checklist roadmap + keyword ATS globale (sopravvive ai ricalcoli) |
 
 ---
@@ -316,8 +319,8 @@ cd frontend && npx tsc --noEmit
 
 ```
 1. Upload CV      → POST /cv/upload              → raw_text in DB
-2. Parse CV       → POST /cv/{id}/parse          → ParsedCV JSON (LLM)
-3. Analisi        → POST /cv/{id}/analyze        → Minerva → roadmap + skill gaps
+2. Parse CV       → POST /cv/{id}/parse          → ParsedCV JSON (LLM) → avvia auto l'analisi
+3. Analisi        → (automatica dopo il parse)   → Minerva → roadmap + skill gaps + keyword
 4. Offerte        → POST /market/search          → Iris → JobOpportunity[] (+ scheduler)
 5. Candidatura    → POST /applications/          → job_description
 6. Ottimizza CV   → POST /applications/{id}/analyze   → Vera → match_score + warnings

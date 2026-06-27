@@ -1,6 +1,7 @@
 """Notifiche Telegram delle offerte sopra soglia, con bottoni azione.
 Funziona in sola uscita (niente webhook): i click sui bottoni vengono letti
 da un poller separato che chiama getUpdates."""
+import datetime
 import html
 import logging
 
@@ -9,6 +10,26 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Timestamp dell'ultimo giro di polling riuscito: serve all'health-check per
+# capire se il loop è vivo (si aggiorna ~ogni 25-35s).
+_last_poll_at: datetime.datetime | None = None
+
+
+def poller_status() -> dict:
+    """Stato del poller Telegram per l'health-check."""
+    enabled = bool(settings.telegram_bot_token)
+    ago = None
+    alive = False
+    if _last_poll_at is not None:
+        ago = (datetime.datetime.now(datetime.timezone.utc) - _last_poll_at).total_seconds()
+        alive = ago < 90  # un ciclo è ~25-35s; oltre 90s lo consideriamo bloccato
+    return {
+        "enabled": enabled,
+        "last_poll_at": _last_poll_at.isoformat() if _last_poll_at else None,
+        "seconds_ago": round(ago) if ago is not None else None,
+        "alive": alive,
+    }
 
 
 async def _call(method: str, payload: dict, timeout: float = 20) -> dict | None:
@@ -175,6 +196,8 @@ async def poll_loop() -> None:
                 {"offset": offset, "timeout": 25, "allowed_updates": ["callback_query"]},
                 timeout=35,
             )
+            global _last_poll_at
+            _last_poll_at = datetime.datetime.now(datetime.timezone.utc)  # battito per l'health-check
             if data and data.get("ok"):
                 for upd in data["result"]:
                     offset = upd["update_id"] + 1
