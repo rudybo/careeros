@@ -35,7 +35,7 @@ function SystemHealthPanel() {
     },
   })
 
-  const nextRun = (health?.scheduler.jobs ?? []).map(j => j.next_run).filter(Boolean).sort()[0]
+  const nextRun = (health?.scheduler.jobs ?? []).filter(j => j.id.startsWith('iris')).map(j => j.next_run).filter(Boolean).sort()[0]
   const overall: boolean | null = restarting ? null : (health?.ok ?? null)
 
   return (

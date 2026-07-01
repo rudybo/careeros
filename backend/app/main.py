@@ -18,6 +18,27 @@ logging.basicConfig(
 )
 
 
+_disk_warned = False
+
+
+async def _disk_check() -> None:
+    """Avvisa su Telegram se il disco supera il 90%. Isteresi (riavvisa solo dopo
+    essere risceso sotto l'85%) per non spammare."""
+    import shutil
+    global _disk_warned
+    total, used, free = shutil.disk_usage("/")
+    pct = used / total * 100
+    if pct >= 90 and not _disk_warned:
+        _disk_warned = True
+        logger.warning("Disco al %.0f%% (%d MB liberi)", pct, free // (1024 ** 2))
+        from app.services import telegram_service
+        await telegram_service.send_text(
+            f"⚠️ <b>Disco server al {pct:.0f}%</b> — solo {free // (1024 ** 2)} MB liberi. Conviene liberare spazio."
+        )
+    elif pct < 85:
+        _disk_warned = False
+
+
 async def _reset_stuck_drafts() -> None:
     """Reset any 'generating' draft statuses left over from a previous crashed run."""
     from sqlalchemy import update
@@ -82,6 +103,7 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone=ZoneInfo("Europe/Rome"))
     scheduler.add_job(_scheduled_market_search, "cron", hour=8,  minute=0, id="iris_morning")
     scheduler.add_job(_scheduled_market_search, "cron", hour=19, minute=0, id="iris_evening")
+    scheduler.add_job(_disk_check, "interval", minutes=30, id="disk_check")
     scheduler.start()
     app.state.scheduler = scheduler  # per l'health-check /system/health
     logger.info("Iris scheduler avviata: 08:00 e 19:00 (Europe/Rome)")
