@@ -46,6 +46,7 @@ Rules:
 - section_suggestions: 2-4 suggestions, each for a different section
 - cover_letter_hints: exactly 3, each connecting a specific candidate experience to a specific JD requirement
 - optimized_summary: must include the candidate's name and at least 3 keywords from the JD
+- NAMES: reproduce the candidate's name EXACTLY as written in the profile — never alter, translate, or "correct" the spelling, and never double or drop letters (e.g. if the profile says "Botosso", write "Botosso", NOT "Bottosso")
 - All text must be in Italian
 - Be specific: reference actual content from both the CV and the JD
 - Return pure JSON only

@@ -48,6 +48,11 @@ class CoverLetter(BaseModel):
     full_text: str
 
 
+class StatusEvent(BaseModel):
+    status: str
+    at: datetime
+
+
 class JobApplicationDetailResponse(BaseModel):
     id: int
     cv_id: int
@@ -55,6 +60,7 @@ class JobApplicationDetailResponse(BaseModel):
     role: str
     job_description: str
     status: str
+    status_history: list[StatusEvent] = []
     optimization: CVOptimization | None
     cover_letter: CoverLetter | None
     cover_letter_status: str

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _PROMPT_PATH = Path(__file__).parent / "prompt.md"
 _SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 
-_MIN_LENGTH = 150  # minimum words for a valid letter
+_MIN_LENGTH = 85  # minimo parole (cover letter ora sono brevi: target 110-160)
 
 
 class CoverLetterError(Exception):

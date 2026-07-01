@@ -16,6 +16,7 @@ class JobApplication(Base):
     job_description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="draft")
     optimization_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    status_history: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON [{status, at}]
     cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_letter_status: Mapped[str] = mapped_column(String(50), default="idle")
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -30,7 +30,7 @@ Return ONLY a valid JSON object with exactly this structure — no explanation, 
 Rules:
 - subject: exactly "Candidatura per il ruolo di [role] - [name]"
 - full_text: the complete letter, ready to copy-paste, with \n for line breaks
-- The candidate's name MUST appear in both subject and closing
+- The candidate's name MUST appear in both subject and closing, spelled EXACTLY as in the profile (never alter/double/drop letters — "Botosso" stays "Botosso", not "Bottosso")
 - The company name MUST appear in the letter body
 - The role MUST appear in paragraph 1
 - Use at least 2 of the provided talking points

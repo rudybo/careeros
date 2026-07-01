@@ -1,2 +1,2 @@
 // Aggiornato automaticamente da scripts/deploy.sh ad ogni deploy. Non modificare a mano.
-export const BUILD_TIME = '2026-06-27 09:44'
+export const BUILD_TIME = '2026-07-01 23:28'

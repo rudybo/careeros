@@ -17,6 +17,11 @@ const STATUS_FLOW: Array<{ value: JobApplication['status']; label: string }> = [
   { value: 'rejected',  label: 'Rifiutato' },
 ]
 
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Bozza', ready: 'Pronto', applied: 'Inviato',
+  interview: 'Colloquio', offer: 'Offerta', rejected: 'Rifiutato',
+}
+
 function MatchBar({ score }: { score: number }) {
   const color = score >= 70 ? 'bg-green-500' : score >= 45 ? 'bg-yellow-400' : 'bg-red-400'
   return (
@@ -103,6 +108,19 @@ export default function ApplicationDetail() {
         <StatusBadge status={app.status} />
       </div>
 
+      {/* Cronologia stati */}
+      {app.status_history && app.status_history.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-400 -mt-3 mb-6">
+          {app.status_history.map((e, i) => (
+            <span key={i} className="flex items-center gap-1.5">
+              {i > 0 && <span className="text-gray-300">→</span>}
+              <span className="font-medium text-gray-500">{STATUS_LABELS[e.status] ?? e.status}</span>
+              <span>{new Date(e.at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <AgentBubble name={bubble.name} active={bubble.active} message={bubble.message} />
 
       {/* Status flow buttons */}
@@ -164,7 +182,7 @@ export default function ApplicationDetail() {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {opt.missing_keywords.map(k => (
-                    <span key={k} className="px-2.5 py-1 bg-red-50 text-red-600 text-xs font-medium rounded-full">{k}</span>
+                    <span key={k} className="px-2.5 py-1 bg-red-500 text-white text-xs font-medium rounded-full">{k}</span>
                   ))}
                 </div>
               )}

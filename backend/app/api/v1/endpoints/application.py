@@ -62,6 +62,8 @@ def _build_detail(record) -> JobApplicationDetailResponse:
     if record.cover_letter:
         cover_letter = CoverLetter(**json.loads(record.cover_letter))
 
+    status_history = json.loads(record.status_history) if record.status_history else []
+
     return JobApplicationDetailResponse(
         id=record.id,
         cv_id=record.cv_id,
@@ -69,6 +71,7 @@ def _build_detail(record) -> JobApplicationDetailResponse:
         role=record.role,
         job_description=record.job_description,
         status=record.status,
+        status_history=status_history,
         optimization=optimization,
         cover_letter=cover_letter,
         cover_letter_status=record.cover_letter_status or "idle",

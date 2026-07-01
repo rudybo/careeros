@@ -28,9 +28,14 @@ class ApplicationRepository:
         app = await self.get_by_id(app_id)
         if app is None:
             return None
+        now = datetime.now(timezone.utc)
         app.status = status
         if status == "applied":
-            app.applied_at = datetime.now(timezone.utc)
+            app.applied_at = now
+        # Cronologia: registra la data di ogni cambio di stato
+        hist = json.loads(app.status_history) if app.status_history else []
+        hist.append({"status": status, "at": now.isoformat()})
+        app.status_history = json.dumps(hist, ensure_ascii=False)
         await self._session.commit()
         await self._session.refresh(app)
         return app

@@ -183,8 +183,14 @@ export interface CoverLetter {
   full_text: string
 }
 
+export interface StatusEvent {
+  status: string
+  at: string
+}
+
 export interface JobApplicationDetail extends JobApplication {
   job_description: string
+  status_history: StatusEvent[]
   optimization: CVOptimization | null
   cover_letter: CoverLetter | null
   cover_letter_status: 'idle' | 'generating' | 'ready' | 'error'
