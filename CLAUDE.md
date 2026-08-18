@@ -37,7 +37,7 @@ Piattaforma AI per la carriera: parsing CV, analisi strategica (agente Minerva),
 ## Git (solo versioni stabili)
 - Commit = milestone, NON ogni fix. Il deploy quotidiano è separato (`deploy.sh`).
 - Dopo commit+push stabile, riallinea il clone server: `ssh SERVER "cd ~/CareerOS && git fetch origin && git reset --hard origin/main"` (sicuro: `careeros.db`/`.env`/segreti non tracciati).
-- Chiudi i messaggi di commit con: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- Chiudi i messaggi di commit con: `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 
 ## Standard
 - **Vite/React:** env con prefisso `VITE_`, accesso `import.meta.env.VITE_VAR`. Breakpoint sidebar `lg:` (non `md:`); `grid-cols-1` su mobile; `pb-24`/`pb-40` dove c'è la barra AgentBubble.
