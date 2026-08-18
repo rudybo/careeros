@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
 
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
 
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 10

@@ -12,7 +12,7 @@ Piattaforma AI per l'ottimizzazione della carriera: parsing CV, analisi strategi
 | **Backend** | Python 3.12 + FastAPI + Uvicorn + SQLAlchemy async |
 | **Database** | SQLite (`backend/careeros.db`) via aiosqlite |
 | **LLM (locale)** | Ollama (`llama3.2`) su Docker — usato in dev |
-| **LLM (prod)** | Groq (`llama-3.3-70b-versatile`) — usato su srvSviluppo |
+| **LLM (prod)** | Groq (`openai/gpt-oss-120b`) — usato su srvSviluppo |
 | **Scheduler** | APScheduler (cron 08:00 + 19:00 Europe/Rome) |
 | **Notifiche** | Bot Telegram `@rudy_jobfinder_bot` |
 | **Gmail** | Google OAuth + Gmail API (bozze candidate) |
@@ -270,7 +270,7 @@ Input: ParsedCV + UserPreferences
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Endpoint Ollama (Docker) |
 | `OLLAMA_MODEL` | `llama3.2` | Modello locale |
 | `GROQ_API_KEY` | — | API key Groq |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Modello Groq |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Modello Groq |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | — | API Adzuna (Market Scout) |
 | `JOOBLE_API_KEY` | — | API Jooble (Market Scout) |
 | `TELEGRAM_BOT_TOKEN` | — | Bot Telegram |

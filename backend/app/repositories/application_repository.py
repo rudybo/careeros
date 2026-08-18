@@ -24,18 +24,28 @@ class ApplicationRepository:
         await self._session.refresh(app)
         return app
 
-    async def update_status(self, app_id: int, status: str) -> JobApplication | None:
-        app = await self.get_by_id(app_id)
-        if app is None:
-            return None
+    @staticmethod
+    def _set_status(app: JobApplication, status: str) -> None:
+        """Cambia lo stato e ne registra la data nello storico.
+
+        Unico punto che scrive `status`: ogni transizione (anche quelle degli
+        agenti, es. update_optimization → "ready") finisce nella cronologia.
+        """
         now = datetime.now(timezone.utc)
         app.status = status
         if status == "applied":
             app.applied_at = now
-        # Cronologia: registra la data di ogni cambio di stato
         hist = json.loads(app.status_history) if app.status_history else []
+        if hist and hist[-1]["status"] == status:
+            return  # stesso stato consecutivo: niente riga duplicata
         hist.append({"status": status, "at": now.isoformat()})
         app.status_history = json.dumps(hist, ensure_ascii=False)
+
+    async def update_status(self, app_id: int, status: str) -> JobApplication | None:
+        app = await self.get_by_id(app_id)
+        if app is None:
+            return None
+        self._set_status(app, status)
         await self._session.commit()
         await self._session.refresh(app)
         return app
@@ -74,7 +84,7 @@ class ApplicationRepository:
         if app is None:
             return None
         app.optimization_data = json.dumps(data, ensure_ascii=False)
-        app.status = "ready"
+        self._set_status(app, "ready")
         await self._session.commit()
         await self._session.refresh(app)
         return app

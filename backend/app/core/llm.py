@@ -43,6 +43,11 @@ async def _chat_groq(messages: list[dict], temperature: float, max_tokens: int) 
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    # I gpt-oss spendono i token di reasoning dentro max_tokens: con lo sforzo di
+    # default ne bruciano ~1000-1900 e il JSON degli agenti arriva troncato.
+    # "low" li tiene sui ~350 e lascia il budget all'output vero.
+    if "gpt-oss" in settings.groq_model:
+        payload["reasoning_effort"] = "low"
     headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
 
     # Retry su 429 (rate limit) con backoff esponenziale
