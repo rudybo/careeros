@@ -352,10 +352,18 @@ export default function MarketPage() {
                       <ExternalLinkIcon size={15} />
                     </a>
                     {opp.draft_status === 'ready' && opp.gmail_url ? (
-                      <a href={opp.gmail_url} target="_blank" rel="noreferrer"
-                        className="p-1.5 text-green-500 hover:text-green-700 transition-colors" title="Apri bozza in Gmail">
-                        <CheckCircleIcon size={15} />
-                      </a>
+                      <>
+                        <a href={opp.gmail_url} target="_blank" rel="noreferrer"
+                          className="p-1.5 text-green-500 hover:text-green-700 transition-colors" title="Apri bozza in Gmail">
+                          <CheckCircleIcon size={15} />
+                        </a>
+                        <button
+                          onClick={() => createDraft.mutate(opp.id)}
+                          disabled={!parsedCV || createDraft.isPending}
+                          className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-30" title="Rigenera bozza (la precedente resta in Gmail)">
+                          <MailIcon size={15} />
+                        </button>
+                      </>
                     ) : opp.draft_status === 'generating' ? (
                       <span className="p-1.5 text-indigo-400" title="Generazione in corso...">
                         <Loader2Icon size={15} className="animate-spin" />

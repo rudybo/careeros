@@ -31,6 +31,10 @@ class ParsedCV(BaseModel):
     summary: str | None = Field(None, description="Sommario professionale o obiettivo")
     skills: list[str] = Field(default_factory=list)
     work_experience: list[WorkExperience] = Field(default_factory=list)
+    other_experience: list[WorkExperience] = Field(
+        default_factory=list,
+        description="Esperienze secondarie (consulenza/compliance o IT, a seconda dell'annuncio); solo output del tailor",
+    )
     education: list[Education] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)

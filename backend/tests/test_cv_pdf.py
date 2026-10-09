@@ -161,3 +161,39 @@ def test_trim_drops_highlights_and_descriptions_before_whole_experiences():
         if len(cv.work_experience) < 5:
             break
     assert all(not e.highlights and not e.description for e in cv.work_experience)
+
+
+# --- Altre esperienze ---
+def _with_other(n_main=1):
+    cv = _big_cv()
+    main = cv.work_experience[:n_main]
+    other = [WorkExperience(company="CRAB", role="Consulente DPO", start_date="2023", highlights=["GDPR audit"])]
+    return cv.model_copy(update={"work_experience": main, "other_experience": other}, deep=True)
+
+
+def test_other_experience_section_after_main():
+    text, n, _ = _text_pages(render_cv_pdf(_with_other()))
+    assert n == 1
+    assert "ALTRE ESPERIENZE" in text.upper() and "Consulente DPO" in text and "Ruolo0" in text
+    assert text.upper().index("ESPERIENZA PROFESSIONALE") < text.upper().index("ALTRE ESPERIENZE")
+
+
+def test_no_other_experience_no_heading():
+    text, _, _ = _text_pages(render_cv_pdf(_big_cv().model_copy(update={"work_experience": _big_cv().work_experience[:1]})))
+    assert "ALTRE ESPERIENZE" not in text.upper()
+
+
+def test_big_cv_with_other_experience_one_page():
+    cv = _big_cv()
+    cv = cv.model_copy(update={"other_experience": [e.model_copy(deep=True) for e in cv.work_experience[:3]]})
+    _, n, _ = _text_pages(render_cv_pdf(cv))
+    assert n == 1
+
+
+def test_trim_other_before_main():
+    from app.services.cv_pdf import _trim_step
+    cv = _with_other(2)
+    cv.other_experience[0].highlights = ["a", "b", "c"]
+    main_hl = [len(e.highlights) for e in cv.work_experience]
+    assert _trim_step(cv) and len(cv.other_experience[0].highlights) == 2
+    assert [len(e.highlights) for e in cv.work_experience] == main_hl

@@ -172,8 +172,8 @@ async def create_draft_email(
     opp = await opp_repo.get_by_id(opp_id)
     if opp is None:
         raise HTTPException(status_code=404, detail="Opportunità non trovata.")
-    if opp.draft_status in ("ready", "generating"):
-        raise HTTPException(status_code=409, detail="Bozza già creata o in generazione.")
+    if opp.draft_status == "generating":
+        raise HTTPException(status_code=409, detail="Bozza già in generazione.")
 
     cv_repo = CVRepository(db)
     cv = await cv_repo.get_by_id(cv_id)

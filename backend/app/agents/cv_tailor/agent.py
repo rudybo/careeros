@@ -3,6 +3,7 @@ import logging
 import re
 import unicodedata
 from pathlib import Path
+from typing import Literal
 
 from pydantic import ValidationError
 
@@ -20,12 +21,49 @@ _SNAP_RATIO = 0.6
 _MAX_PROJECTS = 2
 
 
+_COMPLIANCE_KW = ("gdpr", "dpo", "privacy", "data protection", "industria 4.0", "industry 4.0", "compliance",
+                  "asseverazione", "crediti d'imposta", "nis2", "iso 27001")
+_IT_KW = ("sviluppat", "software", "sistemist", "infrastruttur", "erp", "network", "cloud", "python", "java",
+          "sql", "devops", "helpdesk", "it manager", "business intelligence", "data warehouse", "cyber")
+_ROLE_CONSULTING_RE = re.compile(r"consulente|dpo|data protection|privacy")
+_TITLE_COMPLIANCE_RE = re.compile(
+    r"dpo|gdpr|privacy|data protection|compliance|consulente privacy|responsabile protezione dati")
+
+
 class CVTailorError(Exception):
     pass
 
 
 def _norm(s: str | None) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def _fold(s: str | None) -> str:
+    return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+
+
+def is_consulting(exp: WorkExperience) -> bool:
+    """Euristica deterministica: esperienza di consulenza/compliance se il ruolo contiene
+    consulente|dpo|data protection|privacy, oppure se piu' della meta' degli highlight contiene
+    una parola chiave di compliance. Il nome dell'azienda non decide mai."""
+    if _ROLE_CONSULTING_RE.search(_fold(exp.role)):
+        return True
+    hl = [_fold(h) for h in exp.highlights]
+    hits = sum(1 for h in hl if any(k in h for k in _COMPLIANCE_KW))
+    return bool(hl) and hits * 2 > len(hl)
+
+
+def detect_focus(job_text: str) -> Literal["it", "compliance"]:
+    """'compliance' se il titolo (prima riga) e' di privacy/DPO/compliance, oppure se nel testo le
+    parole chiave di compliance sono >= 3 e piu' numerose di quelle IT; altrimenti 'it'."""
+    text = _fold(job_text)
+    if not text.strip():
+        return "it"
+    if _TITLE_COMPLIANCE_RE.search(text.split(chr(10), 1)[0]):
+        return "compliance"
+    comp = sum(text.count(k) for k in _COMPLIANCE_KW)
+    it = sum(text.count(k) for k in _IT_KW)
+    return "compliance" if comp >= 3 and comp > it else "it"
 
 
 def _snap_key(s: str | None) -> str:
@@ -92,7 +130,8 @@ def _find_base_exp(exp: WorkExperience, base: ParsedCV) -> WorkExperience | None
     return None
 
 
-def enforce_base_facts(tailored: ParsedCV, base: ParsedCV) -> ParsedCV:
+def enforce_base_facts(tailored: ParsedCV, base: ParsedCV,
+                       focus: Literal["it", "compliance"] = "it") -> ParsedCV:
     kept_by_key: dict[tuple[str, str], WorkExperience] = {}
     seen: set[tuple[str, str]] = set()
     for exp in tailored.work_experience:
@@ -120,6 +159,13 @@ def enforce_base_facts(tailored: ParsedCV, base: ParsedCV) -> ParsedCV:
                                   description=d if d and len(d) <= 120 and "\n" not in d else None)
         exps.append(kept)
 
+    # Solo collocazione: consulenza/compliance vs IT (classificate sull'esperienza del base).
+    consulting = [e for e, b in zip(exps, base.work_experience) if is_consulting(b)]
+    others = [e for e, b in zip(exps, base.work_experience) if not is_consulting(b)]
+    main, secondary = (others, consulting) if focus == "it" else (consulting, others)
+    if not main:
+        main, secondary = exps, []
+
     summary = base.summary if (tailored.summary or "").strip() else None
 
     # Lista vuota dall'LLM = progetti omessi di proposito (annuncio non tecnico) -> resta vuota.
@@ -134,7 +180,8 @@ def enforce_base_facts(tailored: ParsedCV, base: ParsedCV) -> ParsedCV:
         linkedin=base.linkedin,
         summary=summary,
         skills=_canonical(tailored.skills, base.skills),
-        work_experience=exps,
+        work_experience=main,
+        other_experience=secondary,
         education=base.education,
         languages=base.languages,
         certifications=_canonical(tailored.certifications, base.certifications),
@@ -147,7 +194,8 @@ async def tailor(base: ParsedCV, job_text: str) -> ParsedCV:
         f"BASE CV (JSON):\n{base.model_dump_json(exclude_none=True, exclude_defaults=True)}\n\n"
         f"JOB POSTING:\n{job_text[:_MAX_JOB_CHARS]}"
     )
-    logger.info("CV Tailor: avvio per %s — annuncio %d chars", base.full_name, len(job_text))
+    focus = detect_focus(job_text)
+    logger.info("CV Tailor: avvio per %s — annuncio %d chars, focus=%s", base.full_name, len(job_text), focus)
     try:
         raw = await chat(
             messages=[
@@ -164,4 +212,4 @@ async def tailor(base: ParsedCV, job_text: str) -> ParsedCV:
     except (ValueError, ValidationError, TypeError) as e:
         logger.error("CV Tailor: output non valido: %s", raw[:500])
         raise CVTailorError(f"Output non valido dal modello: {e}") from e
-    return enforce_base_facts(tailored, base)
+    return enforce_base_facts(tailored, base, focus)

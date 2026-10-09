@@ -40,3 +40,8 @@ def test_prompt_mentions_projects():
     prompt = (Path(__file__).parent.parent / "app" / "prompts" / "cv_analysis.md").read_text(encoding="utf-8")
     assert '"projects"' in prompt
     assert "ignore them" not in prompt
+
+
+def test_other_experience_defaults_empty_for_old_json():
+    from app.schemas.cv import ParsedCV
+    assert ParsedCV.model_validate({"full_name": "A"}).other_experience == []

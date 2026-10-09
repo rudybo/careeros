@@ -116,6 +116,20 @@ def _project_markup(text: str) -> str:
     return escape(text).replace("\n", "<br/>")
 
 
+def _experience_section(story: list, title: str, exps: list, st: _Styles) -> None:
+    if not exps:
+        return
+    _section(story, title, st)
+    for e in exps:
+        period = _period(e.start_date, e.end_date)
+        head = " — ".join(x for x in (e.role, e.company) if x)
+        story.append(_p(f"{head}  ({period})" if period else head, st.job))
+        if e.description:
+            story.append(_p(e.description, st.body))
+        for h in e.highlights:
+            story.append(_p(h, st.bullet, bulletText="•"))
+
+
 def _build(cv: ParsedCV, k: float) -> tuple[bytes, int]:
     st = _Styles(k)
     buf = io.BytesIO()
@@ -135,16 +149,8 @@ def _build(cv: ParsedCV, k: float) -> tuple[bytes, int]:
     if cv.skills:
         _section(story, "Competenze", st)
         story.append(_p(", ".join(cv.skills), st.body))
-    if cv.work_experience:
-        _section(story, "Esperienza professionale", st)
-        for e in cv.work_experience:
-            period = _period(e.start_date, e.end_date)
-            head = " — ".join(x for x in (e.role, e.company) if x)
-            story.append(_p(f"{head}  ({period})" if period else head, st.job))
-            if e.description:
-                story.append(_p(e.description, st.body))
-            for h in e.highlights:
-                story.append(_p(h, st.bullet, bulletText="•"))
+    _experience_section(story, "Esperienza professionale", cv.work_experience, st)
+    _experience_section(story, "Altre esperienze", cv.other_experience, st)
     if cv.projects:
         _section(story, "Progetti personali", st)
         for proj in cv.projects:
@@ -176,21 +182,25 @@ def _trim_step(cv: ParsedCV) -> bool:
     if cv.projects:
         cv.projects.clear()
         return True
-    exps = cv.work_experience
-    for e in reversed(exps):
-        if len(e.highlights) > 1:
-            e.highlights.pop()
-            return True
-    for e in reversed(exps):
-        if e.highlights:
-            e.highlights.clear()
-            return True
-    for e in reversed(exps):
-        if e.description:
-            e.description = None
-            return True
-    if len(exps) > 1:
-        exps.pop()
+    # Prima si asciugano le "Altre esperienze", poi quelle principali; esperienze intere per ultime.
+    for lst in (cv.other_experience, cv.work_experience):
+        for e in reversed(lst):
+            if len(e.highlights) > 1:
+                e.highlights.pop()
+                return True
+        for e in reversed(lst):
+            if e.highlights:
+                e.highlights.clear()
+                return True
+        for e in reversed(lst):
+            if e.description:
+                e.description = None
+                return True
+    if cv.other_experience:
+        cv.other_experience.pop()
+        return True
+    if len(cv.work_experience) > 1:
+        cv.work_experience.pop()
         return True
     return False
 

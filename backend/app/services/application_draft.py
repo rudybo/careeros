@@ -54,7 +54,7 @@ async def build_tailored_draft(
             logger.warning("Rilevamento tipo inserzionista fallito, procedo senza: %s", e)
     contact_email = contact_email or extract_email(job_text)
 
-    tailored = await cv_tailor.tailor(cv, job_text)
+    tailored = await cv_tailor.tailor(cv, f"{role}\n{job_text}")
     letter = await cover_letter_agent.generate(
         cv=tailored, company=company, role=role, job_description=job_text,
         optimization=optimization, advertiser_type=advertiser_type,

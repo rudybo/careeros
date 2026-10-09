@@ -149,9 +149,14 @@ async def _do_draft(opp_id: int) -> None:
         if opp is None or cv is None or not cv.parsed_data:
             await send_text("⚠️ Non riesco a generare la bozza (offerta o CV mancante).")
             return
-        if opp.draft_status == "ready" and opp.gmail_url:
-            await send_text(f"📝 Bozza già pronta: {html.escape(opp.gmail_url)}")
+        if opp.draft_status == "generating":
+            await send_text("⏳ La bozza è già in generazione, attendi il messaggio di conferma.")
             return
+        if opp.draft_status == "ready" and opp.gmail_url:
+            await send_text(
+                f"♻️ Bozza già presente ({html.escape(opp.gmail_url)}): ne creo una nuova. "
+                "La precedente resta in Gmail, eliminala a mano se non ti serve."
+            )
         await OpportunityRepository(s).update_draft_status(opp_id, "generating")
         title, company = opp.title, opp.company or "Azienda"
         description = opp.description or ""

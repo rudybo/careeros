@@ -263,3 +263,59 @@ def test_description_empty_in_base_stays_empty_even_if_llm_invents():
 def test_skill_spelling_canonicalized_and_deduped():
     out = enforce_base_facts(_tailored(skills=["python", "PYTHON", "sql"]), BASE)
     assert out.skills == ["Python", "SQL"]
+
+
+# --- Blocco D: consulenza vs IT ---
+from app.agents.cv_tailor.agent import detect_focus, is_consulting  # noqa: E402
+
+_CRAB = WorkExperience(company="CRAB Medicina Ambiente", role="Consulente IT & Data Protection Officer (DPO)",
+                       start_date="2023", end_date=None,
+                       highlights=["Adeguamento GDPR per clienti", "Crediti d'imposta Industria 4.0"])
+_ITM = WorkExperience(company="Gamma", role="IT Manager Europa", start_date="2018", end_date="2022",
+                      highlights=["Gestione infrastruttura cloud", "Migrazione ERP"])
+_ITC = WorkExperience(company="Delta", role="Sistemista", start_date="2015", end_date="2018",
+                      description="Gestione server e compliance interna.",
+                      highlights=["Manutenzione rete", "Backup", "Monitoraggio, compliance base"])
+
+
+def test_is_consulting():
+    assert is_consulting(_CRAB) is True
+    assert is_consulting(_ITM) is False
+    assert is_consulting(_ITC) is False
+    only_hl = WorkExperience(company="X", role="Analista", highlights=["GDPR audit", "Privacy by design", "Rete"])
+    assert is_consulting(only_hl) is True
+
+
+def test_detect_focus():
+    assert detect_focus("Consulente GDPR / DPO\nAttivita varie") == "compliance"
+    assert detect_focus("Consulente di Business IT\nSviluppo software, python, cloud") == "it"
+    assert detect_focus("Ruolo neutro\nGDPR privacy GDPR compliance DPO audit sviluppatore") == "compliance"
+    assert detect_focus("") == "it"
+
+
+def _multi_base() -> ParsedCV:
+    return BASE.model_copy(update={"work_experience": [_CRAB, _ITM, _ITC]}, deep=True)
+
+
+def _keys(exps):
+    return [(e.company, e.role) for e in exps]
+
+
+def test_enforce_split_it_and_compliance():
+    base = _multi_base()
+    out = enforce_base_facts(base.model_copy(deep=True), base)
+    assert _keys(out.work_experience) == [("Gamma", "IT Manager Europa"), ("Delta", "Sistemista")]
+    assert _keys(out.other_experience) == [("CRAB Medicina Ambiente", _CRAB.role)]
+    out = enforce_base_facts(base.model_copy(deep=True), base, focus="compliance")
+    assert _keys(out.work_experience) == [("CRAB Medicina Ambiente", _CRAB.role)]
+    assert _keys(out.other_experience) == [("Gamma", "IT Manager Europa"), ("Delta", "Sistemista")]
+    assert sorted(_keys(out.work_experience + out.other_experience)) == sorted(_keys(base.work_experience))
+
+
+def test_enforce_main_never_empty():
+    base = BASE.model_copy(update={"work_experience": [_CRAB]}, deep=True)
+    out = enforce_base_facts(base.model_copy(deep=True), base)
+    assert _keys(out.work_experience) == [("CRAB Medicina Ambiente", _CRAB.role)] and out.other_experience == []
+    base = BASE.model_copy(update={"work_experience": [_ITM]}, deep=True)
+    out = enforce_base_facts(base.model_copy(deep=True), base, focus="compliance")
+    assert len(out.work_experience) == 1 and out.other_experience == []
