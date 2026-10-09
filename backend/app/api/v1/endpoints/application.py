@@ -8,6 +8,7 @@ from app.agents.cover_letter import agent as cover_letter_agent
 from app.agents.cover_letter.agent import CoverLetterError
 from app.agents.cv_expert import agent as cv_expert
 from app.agents.cv_expert.agent import CVExpertError
+from app.agents.job_parser import agent as job_parser
 from app.core.database import AsyncSessionLocal, get_db
 from app.repositories.application_repository import ApplicationRepository
 from app.repositories.cv_repository import CVRepository
@@ -18,8 +19,11 @@ from app.schemas.application import (
     JobApplicationDetailResponse,
     JobApplicationResponse,
     JobApplicationStatusUpdate,
+    JobApplicationUpdate,
 )
 from app.schemas.cv import ParsedCV
+from app.services.application_draft import run_application_draft
+from app.services.job_fetcher import JobFetchError, fetch_job_posting
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +79,12 @@ def _build_detail(record) -> JobApplicationDetailResponse:
         optimization=optimization,
         cover_letter=cover_letter,
         cover_letter_status=record.cover_letter_status or "idle",
+        source_url=record.source_url,
+        advertiser_type=record.advertiser_type,
+        contact_email=record.contact_email,
+        tailored_cv=ParsedCV(**json.loads(record.tailored_cv)) if record.tailored_cv else None,
+        draft_url=record.draft_url,
+        draft_status=record.draft_status or "idle",
         applied_at=record.applied_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -93,12 +103,42 @@ async def create_application(body: JobApplicationCreate, db: AsyncSession = Depe
             detail=f"Il CV deve essere in stato 'parsed'. Stato attuale: '{cv.status}'.",
         )
 
+    job_text = body.job_description if (body.job_description or "").strip() else ""
+    company, role = body.company, body.role
+    advertiser_type, contact_email = body.advertiser_type, body.contact_email
+
+    if not job_text:
+        try:
+            job_text = await fetch_job_posting(body.source_url)
+        except JobFetchError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
+    if body.source_url or not (company and role):
+        try:
+            meta = await job_parser.parse(job_text)
+        except job_parser.JobParserError as e:
+            logger.warning("Job parser fallito: %s", e)
+            meta = job_parser.JobMeta()
+        company = company or meta.company
+        role = role or meta.role
+        advertiser_type = advertiser_type or meta.advertiser_type
+        contact_email = contact_email or meta.contact_email
+
+    if not (company and role):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Non riesco a ricavare azienda e ruolo dall'annuncio: compilali a mano.",
+        )
+
     repo = ApplicationRepository(db)
     record = await repo.create(
         cv_id=body.cv_id,
-        company=body.company,
-        role=body.role,
-        job_description=body.job_description,
+        company=company,
+        role=role,
+        job_description=job_text,
+        source_url=body.source_url,
+        advertiser_type=advertiser_type,
+        contact_email=contact_email,
     )
     logger.info("Candidatura creata: id=%d company=%s role=%s", record.id, record.company, record.role)
     return record
@@ -175,6 +215,39 @@ async def generate_cover_letter(
         "cover_letter_status": "generating",
         "message": "Generazione lettera avviata. Usa GET /applications/{id} per monitorare lo stato.",
     }
+
+
+@router.patch("/{app_id}", response_model=JobApplicationResponse)
+async def update_meta(app_id: int, body: JobApplicationUpdate, db: AsyncSession = Depends(get_db)):
+    repo = ApplicationRepository(db)
+    current = await repo.get_by_id(app_id)
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidatura non trovata.")
+    sent = body.model_fields_set
+    advertiser_type = body.advertiser_type if "advertiser_type" in sent else current.advertiser_type
+    contact_email = body.contact_email if "contact_email" in sent else current.contact_email
+    return await repo.set_meta(app_id, advertiser_type, contact_email)
+
+
+@router.post("/{app_id}/draft", status_code=status.HTTP_202_ACCEPTED)
+async def create_tailored_draft(
+    app_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = ApplicationRepository(db)
+    record = await repo.get_by_id(app_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidatura non trovata.")
+    if record.draft_status == "generating":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bozza già in generazione.")
+    cv = await CVRepository(db).get_by_id(record.cv_id)
+    if cv is None or not cv.parsed_data:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CV non parsato.")
+
+    await repo.set_draft_status(app_id, "generating")
+    background_tasks.add_task(run_application_draft, app_id)
+    return {"application_id": app_id, "draft_status": "generating"}
 
 
 @router.patch("/{app_id}/status", response_model=JobApplicationResponse)

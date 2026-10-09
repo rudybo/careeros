@@ -64,8 +64,21 @@ export const updateAtsKeyword = (cvId: number, itemId: number, status: 'todo' | 
   api.patch(`/cv/${cvId}/ats-keywords/${itemId}`, { status })
 
 // ── Applications / CV Expert ──────────────────────────────────────────────────
-export const createApplication = (data: { cv_id: number; company: string; role: string; job_description: string }) =>
-  api.post<JobApplication>('/applications/', data).then(r => r.data)
+export const createApplication = (data: {
+  cv_id: number
+  company?: string
+  role?: string
+  job_description?: string
+  source_url?: string
+}) => api.post<JobApplication>('/applications/', data).then(r => r.data)
+
+export const updateApplicationMeta = (
+  appId: number,
+  data: { advertiser_type: 'recruiter' | 'direct' | null; contact_email: string | null },
+) => api.patch<JobApplication>(`/applications/${appId}`, data).then(r => r.data)
+
+export const startTailoredDraft = (appId: number) =>
+  api.post(`/applications/${appId}/draft`)
 
 export const startOptimization = (appId: number) =>
   api.post(`/applications/${appId}/analyze`)

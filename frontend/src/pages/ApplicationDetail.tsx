@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchApplication, updateApplicationStatus, startCoverLetter } from '../api/client'
+import { fetchApplication, updateApplicationStatus, startCoverLetter, startTailoredDraft, updateApplicationMeta } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
 import AgentBubble from '../components/AgentBubble'
 import {
   ArrowLeftIcon, CheckCircleIcon, XCircleIcon, AlertTriangleIcon,
-  FileTextIcon, MailIcon, SparklesIcon, CopyIcon, CheckIcon, Loader2Icon,
+  FileTextIcon, MailIcon, SparklesIcon, CopyIcon, CheckIcon, Loader2Icon, ExternalLinkIcon,
 } from 'lucide-react'
 import type { JobApplication } from '../types'
 
@@ -56,6 +56,7 @@ export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>()
   const appId = Number(id)
   const qc = useQueryClient()
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   const { data: app } = useQuery({
     queryKey: ['application', appId],
@@ -65,6 +66,7 @@ export default function ApplicationDetail() {
       if (!d) return false
       if (d.status === 'analyzing') return 2000
       if (d.cover_letter_status === 'generating') return 2000
+      if (d.draft_status === 'generating') return 2000
       return false
     },
   })
@@ -77,6 +79,31 @@ export default function ApplicationDetail() {
   const generateLetter = useMutation({
     mutationFn: () => startCoverLetter(appId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['application', appId] }),
+  })
+
+  const createDraft = useMutation({
+    mutationFn: () => startTailoredDraft(appId),
+    onSuccess: () => {
+      setDraftError(null)
+      qc.invalidateQueries({ queryKey: ['application', appId] })
+    },
+    onError: (e: any) => {
+      const d = e?.response?.data?.detail
+      setDraftError((typeof d === 'string' ? d : null) ?? e?.message ?? 'Errore')
+    },
+  })
+
+  const saveMeta = useMutation({
+    mutationFn: (v: { advertiser_type: 'recruiter' | 'direct' | null; contact_email: string | null }) =>
+      updateApplicationMeta(appId, v),
+    onSuccess: () => {
+      setDraftError(null)
+      qc.invalidateQueries({ queryKey: ['application', appId] })
+    },
+    onError: (e: any) => {
+      const d = e?.response?.data?.detail
+      setDraftError((typeof d === 'string' ? d : null) ?? e?.message ?? 'Errore')
+    },
   })
 
   if (!app) return <div className="p-8 text-gray-400">Caricamento...</div>
@@ -250,6 +277,88 @@ export default function ApplicationDetail() {
               </ol>
             </div>
           )}
+
+          {/* ── Bozza Gmail ── */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3">
+              <MailIcon size={14} className="text-blue-500" /> Bozza email (CV su misura + lettera)
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <select
+                aria-label="Tipo inserzionista"
+                value={app.advertiser_type ?? ''}
+                onChange={e => saveMeta.mutate({ advertiser_type: (e.target.value || null) as any, contact_email: app.contact_email })}
+                disabled={saveMeta.isPending}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              >
+                <option value="">Non rilevato</option>
+                <option value="recruiter">Recruiter</option>
+                <option value="direct">Azienda diretta</option>
+              </select>
+              <input
+                type="email"
+                key={app.contact_email ?? ''}
+                aria-label="Email destinatario"
+                defaultValue={app.contact_email ?? ''}
+                onBlur={e => saveMeta.mutate({ advertiser_type: app.advertiser_type, contact_email: e.target.value.trim() || null })}
+                placeholder="Email destinatario"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {draftError && <p className="text-sm text-red-600 mb-3">{draftError}</p>}
+            {app.source_url && (
+              <a href={app.source_url} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mb-3">
+                <ExternalLinkIcon size={12} /> Annuncio originale
+              </a>
+            )}
+            {app.draft_status === 'idle' && (
+              <button
+                onClick={() => createDraft.mutate()}
+                disabled={createDraft.isPending}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60"
+              >
+                Crea bozza Gmail
+              </button>
+            )}
+            {app.draft_status === 'generating' && (
+              <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+                <Loader2Icon size={16} className="animate-spin" /> Sto adattando il CV e preparando la bozza...
+              </div>
+            )}
+            {app.draft_status === 'ready' && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  {app.draft_url && (
+                    <a href={app.draft_url} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-medium underline">
+                      <ExternalLinkIcon size={14} /> Apri bozza in Gmail
+                    </a>
+                  )}
+                  <span>Controlla e premi Invia</span>
+                </div>
+                <button
+                  onClick={() => createDraft.mutate()}
+                  disabled={createDraft.isPending}
+                  className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Rigenera
+                </button>
+              </div>
+            )}
+            {app.draft_status === 'error' && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                <span>Creazione bozza fallita (controlla Gmail/log)</span>
+                <button
+                  onClick={() => createDraft.mutate()}
+                  disabled={createDraft.isPending}
+                  className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Riprova
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* ── Cover Letter Generator ── */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">

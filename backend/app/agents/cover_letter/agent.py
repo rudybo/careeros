@@ -15,12 +15,24 @@ _SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 
 _MIN_LENGTH = 85  # minimo parole (cover letter ora sono brevi: target 110-160)
 
+_TONE = {
+    "recruiter": (
+        "ADVERTISER: RECRUITER (recruiting agency, client company may be undisclosed). "
+        "Write 100-130 words: focus on candidate profile, key skills, availability and notice period; "
+        "do NOT praise the client company, do not assume you know it."
+    ),
+    "direct": (
+        "ADVERTISER: DIRECT COMPANY (the company hiring directly). "
+        "Write 120-160 words: be specific about why this company and this role, linking 1-2 concrete experiences."
+    ),
+}
+
 
 class CoverLetterError(Exception):
     pass
 
 
-def _build_context(cv: ParsedCV, company: str, role: str, job_description: str, optimization: CVOptimization | None) -> str:
+def _build_context(cv: ParsedCV, company: str, role: str, job_description: str, optimization: CVOptimization | None, advertiser_type: str | None = None) -> str:
     lines = [
         f"CANDIDATE: {cv.full_name}",
         f"TARGET COMPANY: {company}",
@@ -46,6 +58,9 @@ def _build_context(cv: ParsedCV, company: str, role: str, job_description: str, 
 
         if optimization.matched_keywords:
             lines += ["", f"KEYWORDS ALREADY IN CV (use naturally): {', '.join(optimization.matched_keywords[:6])}"]
+
+    if advertiser_type in _TONE:
+        lines += ["", _TONE[advertiser_type]]
 
     lines += ["", "JOB DESCRIPTION (excerpt):", job_description[:800]]
     return "\n".join(lines)
@@ -81,8 +96,8 @@ def _apply_guardrails(result: dict, cv: ParsedCV, company: str, role: str) -> di
     return result
 
 
-async def generate(cv: ParsedCV, company: str, role: str, job_description: str, optimization: CVOptimization | None) -> dict:
-    context = _build_context(cv, company, role, job_description, optimization)
+async def generate(cv: ParsedCV, company: str, role: str, job_description: str, optimization: CVOptimization | None, advertiser_type: str | None = None) -> dict:
+    context = _build_context(cv, company, role, job_description, optimization, advertiser_type)
 
     logger.info("Cover Letter Generator: avvio per %s → %s @ %s", cv.full_name, role, company)
 

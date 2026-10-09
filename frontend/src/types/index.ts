@@ -175,6 +175,7 @@ export interface JobOpportunity {
   status: 'new' | 'saved' | 'dismissed' | 'applied'
   draft_status: 'none' | 'generating' | 'ready'
   gmail_url: string | null
+  advertiser_type: 'recruiter' | 'direct' | null
   found_at: string
 }
 
@@ -194,4 +195,9 @@ export interface JobApplicationDetail extends JobApplication {
   optimization: CVOptimization | null
   cover_letter: CoverLetter | null
   cover_letter_status: 'idle' | 'generating' | 'ready' | 'error'
+  source_url: string | null
+  advertiser_type: 'recruiter' | 'direct' | null
+  contact_email: string | null
+  draft_url: string | null
+  draft_status: 'idle' | 'generating' | 'ready' | 'error'
 }

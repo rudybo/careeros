@@ -42,12 +42,18 @@ async def _disk_check() -> None:
 async def _reset_stuck_drafts() -> None:
     """Reset any 'generating' draft statuses left over from a previous crashed run."""
     from sqlalchemy import update
+    from app.models.application import JobApplication
     from app.models.market import JobOpportunity
     async with AsyncSessionLocal() as session:
         await session.execute(
             update(JobOpportunity)
             .where(JobOpportunity.draft_status == "generating")
             .values(draft_status="none")
+        )
+        await session.execute(
+            update(JobApplication)
+            .where(JobApplication.draft_status == "generating")
+            .values(draft_status="error")
         )
         await session.commit()
 

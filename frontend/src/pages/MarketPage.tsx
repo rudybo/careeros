@@ -311,6 +311,11 @@ export default function MarketPage() {
                         {WORK_MODE_LABELS[opp.work_mode] ?? opp.work_mode}
                       </span>
                     )}
+                    {opp.advertiser_type && (
+                      <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full font-medium">
+                        {opp.advertiser_type === 'recruiter' ? 'Recruiter' : 'Azienda diretta'}
+                      </span>
+                    )}
                     {opp.status === 'saved' && (
                       <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full font-medium">Salvata</span>
                     )}

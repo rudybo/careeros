@@ -34,9 +34,16 @@ async def _migrate_add_columns(conn) -> None:
 
     await conn.run_sync(_add_if_missing, "job_applications", "cover_letter", "TEXT")
     await conn.run_sync(_add_if_missing, "job_applications", "cover_letter_status", "VARCHAR(50) DEFAULT 'idle'")
+    await conn.run_sync(_add_if_missing, "job_applications", "source_url", "TEXT")
+    await conn.run_sync(_add_if_missing, "job_applications", "advertiser_type", "VARCHAR(20)")
+    await conn.run_sync(_add_if_missing, "job_applications", "contact_email", "VARCHAR(255)")
+    await conn.run_sync(_add_if_missing, "job_applications", "tailored_cv", "TEXT")
+    await conn.run_sync(_add_if_missing, "job_applications", "draft_url", "TEXT")
+    await conn.run_sync(_add_if_missing, "job_applications", "draft_status", "VARCHAR(50) DEFAULT 'idle'")
     await conn.run_sync(_add_if_missing, "job_opportunities", "draft_status", "VARCHAR(50) DEFAULT 'none'")
     await conn.run_sync(_add_if_missing, "job_opportunities", "draft_id", "VARCHAR(255)")
     await conn.run_sync(_add_if_missing, "job_opportunities", "gmail_url", "TEXT")
+    await conn.run_sync(_add_if_missing, "job_opportunities", "advertiser_type", "VARCHAR(20)")
     await conn.run_sync(_add_if_missing, "user_preferences", "target_roles", "TEXT")
     # DEFAULT 1: le offerte esistenti (pre-feature) risultano già notificate, niente flood.
     # Le nuove offerte inserite dall'ORM usano il default del modello (False) → verranno notificate.

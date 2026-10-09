@@ -2,6 +2,8 @@
 import base64
 import logging
 import os
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -46,14 +48,29 @@ def _get_or_create_label(service) -> str:
     return new_label["id"]
 
 
-def create_draft(to: str, subject: str, body: str) -> dict:
+def _build_message(to: str, subject: str, body: str, attachments: list[tuple[str, bytes]] | None = None):
+    text = MIMEText(body, "plain", "utf-8")
+    if attachments:
+        message = MIMEMultipart()
+        message.attach(text)
+        for filename, data in attachments:
+            part = MIMEApplication(data, _subtype="pdf")
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            message.attach(part)
+    else:
+        message = text
+    if to:
+        message["to"] = to
+    message["subject"] = subject
+    return message
+
+
+def create_draft(to: str, subject: str, body: str, attachments: list[tuple[str, bytes]] | None = None) -> dict:
     """Create a Gmail draft in the CareerOS label. Returns {'draft_id', 'gmail_url'}."""
     service = get_gmail_service()
     label_id = _get_or_create_label(service)
 
-    message = MIMEText(body, "plain", "utf-8")
-    message["to"] = to
-    message["subject"] = subject
+    message = _build_message(to, subject, body, attachments)
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
     draft = service.users().drafts().create(

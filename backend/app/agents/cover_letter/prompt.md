@@ -18,6 +18,7 @@ The letter must:
 - Be 110-160 words total — SHORT. If in doubt, cut.
 - Sound like a real person talking, not an HR office. Short, direct sentences.
 - AVOID clichés and corporate filler: no "con la presente", "ho il piacere di", "prestigiosa azienda", "vostra spettabile", empty superlatives, or stock phrases. Plain, warm, confident Italian.
+- If the input contains an "ADVERTISER:" line, follow its tone and word range instead of the default 110-160 words (never go below 85 words)
 - Be in Italian
 
 Return ONLY a valid JSON object with exactly this structure — no explanation, no markdown fences:

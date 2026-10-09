@@ -98,13 +98,15 @@ class OpportunityRepository:
         await self._session.refresh(opp)
         return opp
 
-    async def update_draft(self, opp_id: int, draft_id: str, gmail_url: str) -> JobOpportunity | None:
+    async def update_draft(self, opp_id: int, draft_id: str, gmail_url: str, advertiser_type: str | None = None) -> JobOpportunity | None:
         result = await self._session.execute(select(JobOpportunity).where(JobOpportunity.id == opp_id))
         opp = result.scalar_one_or_none()
         if opp is None:
             return None
         opp.draft_id = draft_id
         opp.gmail_url = gmail_url
+        if advertiser_type:
+            opp.advertiser_type = advertiser_type
         opp.draft_status = "ready"
         await self._session.commit()
         await self._session.refresh(opp)

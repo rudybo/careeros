@@ -9,7 +9,7 @@ export default function ApplicationsPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ cv_id: '', company: '', role: '', job_description: '' })
+  const [form, setForm] = useState({ cv_id: '', source_url: '', company: '', role: '', job_description: '' })
   const [formError, setFormError] = useState<string | null>(null)
 
   const { data: apps = [], isLoading } = useQuery({
@@ -28,14 +28,17 @@ export default function ApplicationsPage() {
   const create = useMutation({
     mutationFn: async () => {
       setFormError(null)
-      if (!form.cv_id || !form.company || !form.role || !form.job_description) {
-        throw new Error('Compila tutti i campi')
+      const hasText = form.company && form.role && form.job_description
+      const trimmedUrl = form.source_url.trim()
+      if (!form.cv_id || (!trimmedUrl && !hasText)) {
+        throw new Error("Inserisci il link dell'annuncio oppure compila azienda, ruolo e testo")
       }
       const app = await createApplication({
         cv_id: Number(form.cv_id),
-        company: form.company,
-        role: form.role,
-        job_description: form.job_description,
+        source_url: trimmedUrl || undefined,
+        company: form.company || undefined,
+        role: form.role || undefined,
+        job_description: form.job_description || undefined,
       })
       await startOptimization(app.id)
       return app
@@ -43,10 +46,13 @@ export default function ApplicationsPage() {
     onSuccess: (app) => {
       qc.invalidateQueries({ queryKey: ['applications'] })
       setShowForm(false)
-      setForm({ cv_id: '', company: '', role: '', job_description: '' })
+      setForm({ cv_id: '', source_url: '', company: '', role: '', job_description: '' })
       navigate(`/applications/${app.id}`)
     },
-    onError: (e: any) => setFormError(e?.message ?? e?.response?.data?.detail ?? 'Errore'),
+    onError: (e: any) => {
+      const d = e?.response?.data?.detail
+      setFormError((typeof d === 'string' ? d : null) ?? e?.message ?? 'Errore')
+    },
   })
 
   return (
@@ -86,9 +92,20 @@ export default function ApplicationsPage() {
                 </select>
               )}
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Link annuncio (opzionale)</label>
+              <input
+                type="url"
+                value={form.source_url}
+                onChange={e => setForm(f => ({ ...f, source_url: e.target.value }))}
+                placeholder="https://..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Se il link non è leggibile (es. LinkedIn), incolla il testo qui sotto.</p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Azienda</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Azienda{form.source_url ? ' (opzionale con link)' : ''}</label>
                 <input
                   type="text"
                   value={form.company}
@@ -98,7 +115,7 @@ export default function ApplicationsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ruolo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ruolo{form.source_url ? ' (opzionale con link)' : ''}</label>
                 <input
                   type="text"
                   value={form.role}
@@ -109,7 +126,7 @@ export default function ApplicationsPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Testo annuncio (job description)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Testo annuncio (job description){form.source_url ? ' (opzionale con link)' : ''}</label>
               <textarea
                 value={form.job_description}
                 onChange={e => setForm(f => ({ ...f, job_description: e.target.value }))}

@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.market_scout import agent as scout
 from app.agents.market_scout.agent import ScoutError
-from app.agents.cover_letter import agent as cover_letter_agent
 from app.agents.cover_letter.agent import CoverLetterError
 from app.core.database import AsyncSessionLocal, get_db
 from app.repositories.cv_repository import CVRepository
@@ -18,7 +17,8 @@ from app.schemas.market import (
     UserPreferencesResponse,
     UserPreferencesUpdate,
 )
-from app.services import gmail_service
+from app.services.application_draft import build_tailored_draft, resolve_job_text
+from app.agents.cv_tailor.agent import CVTailorError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/market", tags=["Market Scout"])
@@ -51,6 +51,7 @@ def _build_opp_response(opp) -> JobOpportunityResponse:
         status=opp.status,
         draft_status=opp.draft_status,
         gmail_url=opp.gmail_url,
+        advertiser_type=opp.advertiser_type,
         found_at=opp.found_at,
     )
 
@@ -187,31 +188,31 @@ async def create_draft_email(
         title=opp.title,
         company=opp.company or "Azienda",
         description=opp.description or "",
+        url=opp.url,
     )
     return {"status": "generating", "message": "Generazione lettera e bozza Gmail avviata."}
 
 
-async def _run_create_draft(opp_id: int, cv_parsed_data: dict, title: str, company: str, description: str) -> None:
+async def _run_create_draft(
+    opp_id: int, cv_parsed_data: dict, title: str, company: str, description: str, url: str | None = None,
+) -> dict | None:
     try:
         async with AsyncSessionLocal() as session:
             repo = OpportunityRepository(session)
             try:
                 cv = ParsedCV(**cv_parsed_data)
-                letter = await cover_letter_agent.generate(
-                    cv=cv,
-                    company=company,
-                    role=title,
-                    job_description=description,
-                    optimization=None,
+                job_text, used_full = await resolve_job_text(url, description)
+                result = await build_tailored_draft(
+                    cv, company, title, job_text,
+                    advertiser_type=None, contact_email=None,
                 )
-                result = gmail_service.create_draft(
-                    to="",
-                    subject=letter["subject"],
-                    body=letter["full_text"],
+                await repo.update_draft(
+                    opp_id, result["draft_id"], result["gmail_url"],
+                    advertiser_type=result.get("advertiser_type"),
                 )
-                await repo.update_draft(opp_id, result["draft_id"], result["gmail_url"])
                 logger.info("Bozza Gmail creata per opportunità %d: %s", opp_id, result["draft_id"])
-            except (CoverLetterError, RuntimeError) as e:
+                return {**result, "used_full_posting": used_full}
+            except (CoverLetterError, CVTailorError, RuntimeError) as e:
                 logger.error("Errore creazione bozza per opp %d: %s", opp_id, e)
                 await repo.update_draft_status(opp_id, "none")
             except Exception as e:
@@ -219,3 +220,4 @@ async def _run_create_draft(opp_id: int, cv_parsed_data: dict, title: str, compa
                 await repo.update_draft_status(opp_id, "none")
     except Exception as outer_e:
         logger.error("Errore critico background task draft opp %d: %s", opp_id, outer_e, exc_info=True)
+    return None

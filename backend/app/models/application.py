@@ -19,6 +19,12 @@ class JobApplication(Base):
     status_history: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON [{status, at}]
     cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_letter_status: Mapped[str] = mapped_column(String(50), default="idle")
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    advertiser_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # recruiter / direct
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tailored_cv: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON ParsedCV
+    draft_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    draft_status: Mapped[str] = mapped_column(String(50), default="idle")  # idle/generating/ready/error
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

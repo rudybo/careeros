@@ -38,6 +38,7 @@ class JobOpportunityResponse(BaseModel):
     status: str
     draft_status: str
     gmail_url: str | None
+    advertiser_type: str | None = None
     found_at: datetime
     model_config = {"from_attributes": True}
 

@@ -116,6 +116,26 @@ async def _answer_callback(cb_id: str, text: str = "") -> None:
     await _call("answerCallbackQuery", {"callback_query_id": cb_id, "text": text})
 
 
+_ADV_LABELS = {"recruiter": "Recruiter", "direct": "Azienda diretta"}
+
+
+def format_draft_confirmation(result: dict) -> str:
+    """Messaggio (HTML) di conferma bozza con i dettagli di cosa è stato fatto."""
+    esc = html.escape
+    adv = _ADV_LABELS.get(result.get("advertiser_type") or "", "non rilevato")
+    email = result.get("contact_email")
+    dest = esc(email) if email else "non trovato (da inserire a mano)"
+    annuncio = "completo dal link" if result.get("used_full_posting") else "estratto della ricerca"
+    return "\n".join([
+        "✅ Bozza pronta su Gmail:",
+        esc(result.get("gmail_url") or ""),
+        f"• Inserzionista: {adv}",
+        f"• Destinatario: {dest}",
+        "• CV su misura allegato (PDF)",
+        f"• Annuncio: {annuncio}",
+    ])
+
+
 async def _do_draft(opp_id: int) -> None:
     import json
     from app.core.database import AsyncSessionLocal
@@ -130,19 +150,21 @@ async def _do_draft(opp_id: int) -> None:
             await send_text("⚠️ Non riesco a generare la bozza (offerta o CV mancante).")
             return
         if opp.draft_status == "ready" and opp.gmail_url:
-            await send_text(f"📝 Bozza già pronta: {opp.gmail_url}")
+            await send_text(f"📝 Bozza già pronta: {html.escape(opp.gmail_url)}")
             return
         await OpportunityRepository(s).update_draft_status(opp_id, "generating")
         title, company = opp.title, opp.company or "Azienda"
         description = opp.description or ""
+        url = opp.url
         parsed = json.loads(cv.parsed_data)
 
-    await _run_create_draft(opp_id=opp_id, cv_parsed_data=parsed, title=title, company=company, description=description)
+    result = await _run_create_draft(
+        opp_id=opp_id, cv_parsed_data=parsed, title=title, company=company,
+        description=description, url=url,
+    )
 
-    async with AsyncSessionLocal() as s:
-        opp = await OpportunityRepository(s).get_by_id(opp_id)
-    if opp and opp.draft_status == "ready" and opp.gmail_url:
-        await send_text(f"✅ Bozza pronta su Gmail:\n{opp.gmail_url}")
+    if result and result.get("gmail_url"):
+        await send_text(format_draft_confirmation(result))
     else:
         await send_text("⚠️ La generazione della bozza non è riuscita.")
 
