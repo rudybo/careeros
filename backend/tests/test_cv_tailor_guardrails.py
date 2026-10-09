@@ -319,3 +319,50 @@ def test_enforce_main_never_empty():
     base = BASE.model_copy(update={"work_experience": [_ITM]}, deep=True)
     out = enforce_base_facts(base.model_copy(deep=True), base, focus="compliance")
     assert len(out.work_experience) == 1 and out.other_experience == []
+
+
+# --- keywords ---
+def _kwbase(**over) -> ParsedCV:
+    d = dict(full_name="X", summary="Esperto GDPR e Power BI.", skills=["Python", "SQL", "Power BI", "Docker"],
+             certifications=["AWS Cloud Practitioner"],
+             work_experience=[WorkExperience(company="A", role="R", description="Lavoro con NIS2 e ISO 27001.")])
+    d.update(over)
+    return ParsedCV(**d)
+
+
+def test_extract_keywords_only_vocab_and_job_in_position_order():
+    from app.agents.cv_tailor.agent import extract_keywords
+    kws = extract_keywords(_kwbase(), "Cerchiamo esperto di power bi e PYTHON, con GDPR. Java richiesto, Kubernetes.")
+    # Java/Kubernetes fuori vocabolario; GDPR e' nel testo del base; spelling del base
+    assert kws == ["Power BI", "Python", "GDPR"]
+
+
+def test_extract_keywords_normative_only_if_in_base():
+    from app.agents.cv_tailor.agent import extract_keywords
+    assert extract_keywords(_kwbase(summary="Nulla", work_experience=[]), "Serve esperienza NIS2 e GDPR") == []
+    assert extract_keywords(_kwbase(), "Serve NIS2 e ISO 27001") == ["NIS2", "ISO 27001"]
+
+
+def test_extract_keywords_whole_word_and_dedup_and_empty():
+    from app.agents.cv_tailor.agent import extract_keywords
+    assert extract_keywords(_kwbase(), "Usiamo MySQLi e PostgreSQL") == []
+    assert extract_keywords(_kwbase(), "SQL, sql e SQL") == ["SQL"]
+    assert extract_keywords(_kwbase(), "") == []
+
+
+def test_extract_keywords_capped_at_12():
+    from app.agents.cv_tailor.agent import extract_keywords
+    skills = [f"Tool{i}" for i in range(20)]
+    kws = extract_keywords(_kwbase(skills=skills), " ".join(skills))
+    assert kws == skills[:12]
+
+
+def test_tailor_sets_keywords_from_base_and_job():
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+    from app.agents.cv_tailor import agent
+    mock = AsyncMock(return_value=BASE.model_dump_json())
+    with patch.object(agent, "chat", mock):
+        out = asyncio.run(agent.tailor(BASE, "Cercasi Python e FastAPI"))
+    assert out.keywords == ["Python", "FastAPI"]
+    assert "keywords" not in mock.call_args.kwargs["messages"][1]["content"]

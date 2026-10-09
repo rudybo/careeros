@@ -2,6 +2,7 @@
 import io
 import logging
 import os
+import re
 import unicodedata
 from xml.sax.saxutils import escape, quoteattr
 
@@ -86,6 +87,27 @@ def _p(text: str, style: ParagraphStyle, **kw) -> Paragraph:
     return Paragraph(escape(_clean(text)).replace("\n", "<br/>"), style, **kw)
 
 
+def _emphasize(text: str | None, keywords: list[str] | None) -> str:
+    """Testo grezzo -> markup con le keyword in <b>. Il match è sul testo grezzo, l'escape avviene una volta sola."""
+    raw = _clean(text)
+    kws = sorted({k for k in (_clean(x).strip() for x in keywords or []) if len(k) >= 2}, key=len, reverse=True)
+    if not kws:
+        return escape(raw).replace("\n", "<br/>")
+    rx = re.compile("|".join(rf"(?<!\w){re.escape(k)}(?!\w)" for k in kws), re.IGNORECASE)
+    out: list[str] = []
+    pos = 0
+    for m in rx.finditer(raw):
+        out.append(escape(raw[pos:m.start()]))
+        out.append(f"<b>{escape(m.group(0))}</b>")
+        pos = m.end()
+    out.append(escape(raw[pos:]))
+    return "".join(out).replace("\n", "<br/>")
+
+
+def _pk(text: str, style: ParagraphStyle, keywords: list[str], **kw) -> Paragraph:
+    return Paragraph(_emphasize(text, keywords), style, **kw)
+
+
 def _section(story: list, title: str, st: _Styles) -> None:
     story.append(_p(title.upper(), st.h))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#c8d0da")))
@@ -107,16 +129,16 @@ def _linkedin_para(url: str, st: _Styles) -> Paragraph:
     return Paragraph(f'<a href={quoteattr(href)} color="{_LINK_COLOR}">{escape(_clean(url))}</a>', st.contact)
 
 
-def _project_markup(text: str) -> str:
+def _project_markup(text: str, keywords: list[str] | None = None) -> str:
     """Prefisso "Nome:" in grassetto (solo se breve), resto testo normale."""
     text = _clean(text)
     name, sep, rest = text.partition(": ")
     if sep and 0 < len(name) <= 40 and "\n" not in name:
-        return f"<b>{escape(name)}:</b> {escape(rest)}"
-    return escape(text).replace("\n", "<br/>")
+        return f"<b>{escape(name)}:</b> {_emphasize(rest, keywords)}"
+    return _emphasize(text, keywords)
 
 
-def _experience_section(story: list, title: str, exps: list, st: _Styles) -> None:
+def _experience_section(story: list, title: str, exps: list, st: _Styles, kws: list[str]) -> None:
     if not exps:
         return
     _section(story, title, st)
@@ -125,9 +147,9 @@ def _experience_section(story: list, title: str, exps: list, st: _Styles) -> Non
         head = " — ".join(x for x in (e.role, e.company) if x)
         story.append(_p(f"{head}  ({period})" if period else head, st.job))
         if e.description:
-            story.append(_p(e.description, st.body))
+            story.append(_pk(e.description, st.body, kws))
         for h in e.highlights:
-            story.append(_p(h, st.bullet, bulletText="•"))
+            story.append(_pk(h, st.bullet, kws, bulletText="•"))
 
 
 def _build(cv: ParsedCV, k: float) -> tuple[bytes, int]:
@@ -145,16 +167,16 @@ def _build(cv: ParsedCV, k: float) -> tuple[bytes, int]:
 
     if cv.summary:
         _section(story, "Profilo", st)
-        story.append(_p(cv.summary, st.body))
+        story.append(_pk(cv.summary, st.body, cv.keywords))
     if cv.skills:
         _section(story, "Competenze", st)
-        story.append(_p(", ".join(cv.skills), st.body))
-    _experience_section(story, "Esperienza professionale", cv.work_experience, st)
-    _experience_section(story, "Altre esperienze", cv.other_experience, st)
+        story.append(Paragraph(", ".join(_emphasize(x, cv.keywords) for x in cv.skills), st.body))
+    _experience_section(story, "Esperienza professionale", cv.work_experience, st, cv.keywords)
+    _experience_section(story, "Altre esperienze", cv.other_experience, st, cv.keywords)
     if cv.projects:
         _section(story, "Progetti personali", st)
         for proj in cv.projects:
-            story.append(Paragraph(_project_markup(proj), st.bullet, bulletText="•"))
+            story.append(Paragraph(_project_markup(proj, cv.keywords), st.bullet, bulletText="•"))
     if cv.education:
         _section(story, "Formazione", st)
         for ed in cv.education:

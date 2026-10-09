@@ -42,6 +42,10 @@ class ParsedCV(BaseModel):
         default_factory=list,
         description="Progetti personali, uno per stringa (nome + descrizione), testo verbatim",
     )
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Termini da evidenziare in grassetto nel PDF (solo output del tailor, deterministico)",
+    )
 
 
 class CVUploadResponse(BaseModel):

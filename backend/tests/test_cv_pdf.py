@@ -197,3 +197,78 @@ def test_trim_other_before_main():
     main_hl = [len(e.highlights) for e in cv.work_experience]
     assert _trim_step(cv) and len(cv.other_experience[0].highlights) == 2
     assert [len(e.highlights) for e in cv.work_experience] == main_hl
+
+
+# --- keywords in grassetto ---
+def _bold_text(pdf: bytes) -> str:
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        return "".join(c["text"] for p in doc.pages for c in p.chars if "Bold" in c["fontname"])
+
+
+def _kwcv(**over) -> ParsedCV:
+    d = dict(full_name="Rudy Botosso",
+             skills=["Python", "Power BI"],
+             work_experience=[WorkExperience(company="Acme", role="Dev", start_date="2020", end_date="2022",
+                                             description="Uso Python ogni giorno.",
+                                             highlights=["Dashboard in Power BI & report <ok> per i clienti"])],
+             projects=["Tool: scritto in python con ISO 27001 & co"],
+             keywords=["Power BI", "Python", "ISO 27001"])
+    d.update(over)
+    return ParsedCV(**d)
+
+
+def test_keyword_run_is_bold_and_rest_not():
+    pdf = render_cv_pdf(ParsedCV(
+        full_name="Rudy", work_experience=[WorkExperience(company="A", role="R",
+                                                          highlights=["Report con Power BI per clienti"])],
+        keywords=["Power BI"]))
+    bold = _bold_text(pdf)
+    # "A"/"R" job line e' gia' bold: controlla solo la riga bullet
+    assert "PowerBI" in bold.replace(" ", "")
+    with pdfplumber.open(io.BytesIO(pdf)) as doc:
+        chars = [c for c in doc.pages[0].chars]
+    line = "".join(c["text"] for c in chars)
+    i = line.index("Report con ")
+    seg = chars[i:i + len("Report con Power BI per clienti")]
+    flags = "".join("B" if "Bold" in c["fontname"] else "n" for c in seg)
+    assert flags == "n" * 11 + "B" * 8 + "n" * 12
+
+
+def test_keywords_never_change_text():
+    with_kw = _kwcv()
+    without = with_kw.model_copy(update={"keywords": []})
+    t1, p1, _ = _text_pages(render_cv_pdf(with_kw))
+    t2, p2, _ = _text_pages(render_cv_pdf(without))
+    assert t1 == t2 and p1 == p2 == 1
+
+
+def test_special_chars_around_keywords_render():
+    t, pages, _ = _text_pages(render_cv_pdf(_kwcv()))
+    assert "Power BI & report <ok>" in t and "ISO 27001 & co" in t and pages == 1
+
+
+def test_project_prefix_bold_and_keyword_in_rest():
+    pdf = render_cv_pdf(_kwcv(work_experience=[], skills=[]))
+    assert _bold_text(pdf).replace(" ", "").endswith("Tool:" + "python" + "ISO27001")
+
+
+def test_case_insensitive_keeps_original_casing():
+    t, _, _ = _text_pages(render_cv_pdf(_kwcv()))
+    assert "scritto in python" in t
+
+
+def test_many_keywords_still_one_page():
+    cv = _big_cv()
+    cv.keywords = ["Risultato", "ottenuto", "grande", "impegno", "metodo", "Sviluppo", "backend", "servizi",
+                   "qualità", "prestazioni"]
+    _, pages, _ = _text_pages(render_cv_pdf(cv))
+    assert pages == 1
+
+
+def test_emphasize_helper():
+    from app.services.cv_pdf import _emphasize
+    assert _emphasize("a & Power BI", ["Power BI"]) == "a &amp; <b>Power BI</b>"
+    assert _emphasize("SQL Server e SQL", ["SQL", "SQL Server"]) == "<b>SQL Server</b> e <b>SQL</b>"
+    assert _emphasize("MySQLi", ["SQL"]) == "MySQLi"
+    assert _emphasize("bb bb", ["bb"]) == "<b>bb</b> <b>bb</b>"
+    assert _emphasize("x &amp y", ["amp", "bb"]) == "x &amp;<b>amp</b> y"

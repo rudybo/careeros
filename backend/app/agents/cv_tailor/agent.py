@@ -189,6 +189,45 @@ def enforce_base_facts(tailored: ParsedCV, base: ParsedCV,
     )
 
 
+_NORMATIVE_TERMS = ("GDPR", "NIS2", "ISO 27001", "AI Act", "Industria 4.0", "Industry 4.0", "DPO", "ERP", "CRM",
+                    "BI", "Business Intelligence", "Data Warehouse", "Power BI", "SQL Server", "Python")
+_MAX_KEYWORDS = 12
+
+
+def _word_re(term: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<!\w){re.escape(term)}(?!\w)", re.IGNORECASE)
+
+
+def _base_text(base: ParsedCV) -> str:
+    parts = [base.summary or "", *base.skills, *base.certifications, *base.projects]
+    for e in (*base.work_experience, *base.other_experience):
+        parts += [e.role or "", e.description or "", *e.highlights]
+    return _fold(" ".join(parts))
+
+
+def extract_keywords(base: ParsedCV, job_text: str) -> list[str]:
+    """Termini del CV base (skill, certificazioni, sigle note presenti nel base) che compaiono nell'annuncio."""
+    base_text = _base_text(base)
+    vocab = [t.strip() for t in (*base.skills, *base.certifications)]
+    vocab += [t for t in _NORMATIVE_TERMS if _word_re(_fold(t)).search(base_text)]
+    job = _fold(job_text)
+    found: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for term in vocab:
+        key = _fold(term)
+        if len(key) < 2 or key in seen:
+            continue
+        seen.add(key)
+        m = _word_re(key).search(job)
+        if m:
+            found.append((m.start(), m.end(), term))
+    # Scarta i termini il cui match cade dentro quello di un termine piu' lungo (es. "BI" in "Power BI").
+    found = [f for f in found if not any(o is not f and o[0] <= f[0] and f[1] <= o[1] and (o[1] - o[0]) > (f[1] - f[0])
+                                         for o in found)]
+    found.sort(key=lambda x: x[0])
+    return [t for _, _, t in found[:_MAX_KEYWORDS]]
+
+
 async def tailor(base: ParsedCV, job_text: str) -> ParsedCV:
     user_message = (
         f"BASE CV (JSON):\n{base.model_dump_json(exclude_none=True, exclude_defaults=True)}\n\n"
@@ -212,4 +251,6 @@ async def tailor(base: ParsedCV, job_text: str) -> ParsedCV:
     except (ValueError, ValidationError, TypeError) as e:
         logger.error("CV Tailor: output non valido: %s", raw[:500])
         raise CVTailorError(f"Output non valido dal modello: {e}") from e
-    return enforce_base_facts(tailored, base, focus)
+    out = enforce_base_facts(tailored, base, focus)
+    out.keywords = extract_keywords(base, job_text[:_MAX_JOB_CHARS])
+    return out
