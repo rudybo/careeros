@@ -1,12 +1,12 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, Fragment } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { uploadCV, parseCV, fetchCVList, fetchCV, fetchAnalysisList, startAnalysis, updateCV } from '../api/client'
+import { uploadCV, parseCV, fetchCVList, cvFileUrl, fetchCV, fetchAnalysisList, startAnalysis, updateCV } from '../api/client'
 import { CV_KINDS } from '../types'
 import type { CVKind } from '../types'
 import AgentBubble from '../components/AgentBubble'
 import {
-  UploadCloudIcon, ListChecksIcon, HistoryIcon, FileTextIcon, ArchiveIcon,
+  UploadCloudIcon, ListChecksIcon, HistoryIcon, FlagIcon, ArchiveIcon,
   SparklesIcon, TrendingUpIcon, Loader2Icon,
 } from 'lucide-react'
 
@@ -175,50 +175,74 @@ export default function CVPage() {
         </div>
       </div>
 
-      {/* Riferimento del CV: file + data di caricamento */}
-      {cv && (
-        <div className="flex items-center gap-2 mb-5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs text-gray-500">
-          <FileTextIcon size={14} className="text-gray-400 shrink-0" />
-          <span className="font-medium text-gray-700 truncate">{cv.filename}</span>
-          <span className="shrink-0 ml-auto">caricato il {new Date(cv.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-        </div>
-      )}
-
       {uploadError && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{uploadError}</div>}
 
       {/* I tuoi curriculum (attivi) */}
       <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
         <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">I tuoi curriculum</h2>
-        <ul className="divide-y divide-gray-100">
-          {[...cvs].sort((a, b) => b.id - a.id).map(c => (
-            <li key={c.id} className="py-2 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 sm:items-center">
-              <div className="flex items-center gap-2 min-w-0">
-                <FileTextIcon size={14} className="text-gray-400 shrink-0" />
-                <span className="text-sm text-gray-800 truncate">{c.filename}</span>
-                {c.is_base && <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full font-medium shrink-0">Base</span>}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select aria-label={`Tipo di ${c.filename}`} value={c.kind ?? 'altro'}
-                  onChange={e => patchCV.mutate({ id: c.id, patch: { kind: e.target.value as CVKind } })}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white text-gray-700">
-                  {CV_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
-                </select>
-                {!c.is_base && c.status === 'parsed' && (
-                  <button onClick={() => patchCV.mutate({ id: c.id, patch: { is_base: true } })} disabled={patchCV.isPending}
-                    className="px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60">
-                    Usa come base
-                  </button>
-                )}
-                <button onClick={() => patchCV.mutate({ id: c.id, patch: { archived: true } })}
-                  disabled={patchCV.isPending || c.is_base}
-                  title={c.is_base ? 'Imposta prima un altro CV come base' : 'Sposta nello storico'}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                  <ArchiveIcon size={12} /> Metti in storico
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] gap-x-0 items-stretch min-w-[420px]">
+            <div className="pb-2 pl-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Nome</div>
+            <div className="hidden sm:block pb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Caricato</div>
+            <div className="pb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tipo</div>
+            <div className="pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 text-center px-2">Base</div>
+            <div className="pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 text-center px-2"><span className="sr-only">Storico</span></div>
+            {[...cvs].sort((a, b) => b.id - a.id).map(c => {
+              const cell = `py-2 px-2 border-t border-gray-100 flex items-center ${c.is_base ? 'cv-row-base' : ''}`
+              return (
+                <Fragment key={c.id}>
+                  <div className={`${cell} pl-3 min-w-0 ${c.is_base ? 'border-l-4 border-l-blue-600' : 'border-l-4 border-l-transparent'}`}>
+                    <div className="min-w-0 w-full">
+                    <div className="flex items-baseline min-w-0">
+                    {c.has_file ? (
+                      <a href={cvFileUrl(c.id)} target="_blank" rel="noreferrer" title="Apri il file originale"
+                        className={`block min-w-0 text-sm text-gray-800 hover:text-blue-600 hover:underline truncate ${c.is_base ? 'font-semibold' : ''}`}>{c.filename}</a>
+                    ) : (
+                      <Link to={`/cv/${c.id}`} title="Apri curriculum (file originale non salvato)"
+                        className={`block min-w-0 text-sm text-gray-800 hover:text-blue-600 hover:underline truncate ${c.is_base ? 'font-semibold' : ''}`}>{c.filename}</Link>
+                    )}
+                    <Link to={`/cv/${c.id}`} title="Dati letti dal curriculum"
+                      className="shrink-0 ml-2 text-[11px] text-gray-500 hover:text-blue-600 hover:underline">dettagli</Link>
+                    </div>
+                    <div className="sm:hidden text-[11px] text-gray-400">caricato il {new Date(c.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                    </div>
+                  </div>
+                  <div className={`${cell} hidden sm:flex text-xs text-gray-500 whitespace-nowrap`}>
+                    {new Date(c.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </div>
+                  <div className={cell}>
+                    <select aria-label={`Tipo di ${c.filename}`} value={c.kind ?? 'altro'}
+                      onChange={e => patchCV.mutate({ id: c.id, patch: { kind: e.target.value as CVKind } })}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white text-gray-700">
+                      {CV_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    </select>
+                  </div>
+                  <div className={`${cell} flex justify-center`}>
+                    {c.is_base ? (
+                      <span aria-label="CV base" className="p-1 text-blue-600"><FlagIcon size={16} fill="currentColor" /></span>
+                    ) : (
+                      <button onClick={() => patchCV.mutate({ id: c.id, patch: { is_base: true } })}
+                        disabled={patchCV.isPending || c.status !== 'parsed'}
+                        title="Usa come base" aria-label="Usa come base"
+                        className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <FlagIcon size={16} />
+                      </button>
+                    )}
+                  </div>
+                  <div className={`${cell} flex justify-center`}>
+                    <button onClick={() => patchCV.mutate({ id: c.id, patch: { archived: true } })}
+                      disabled={patchCV.isPending || c.is_base}
+                      title={c.is_base ? 'Imposta prima un altro CV come base' : 'Metti in storico'}
+                      aria-label="Metti in storico"
+                      className={`p-1 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100 ${c.is_base ? 'opacity-40 cursor-not-allowed' : 'disabled:opacity-40'}`}>
+                      <ArchiveIcon size={16} />
+                    </button>
+                  </div>
+                </Fragment>
+              )
+            })}
+          </div>
+        </div>
         {catalogError && <p className="mt-2 text-sm text-red-600">{catalogError}</p>}
       </div>
 

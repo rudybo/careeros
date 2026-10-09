@@ -16,12 +16,35 @@ class CVRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, filename: str, raw_text: str) -> CV:
+    async def create(
+        self, filename: str, raw_text: str, file_content: bytes | None = None, file_mime: str | None = None
+    ) -> CV:
         cv = CV(filename=filename, raw_text=raw_text, status="uploaded")
+        if file_content:
+            cv.file_content, cv.file_mime, cv.file_size = file_content, file_mime, len(file_content)
         self._session.add(cv)
         await self._session.commit()
         await self._session.refresh(cv)
         return cv
+
+    async def attach_file(self, cv_id: int, content: bytes, mime: str) -> CV | None:
+        cv = await self.get_by_id(cv_id)
+        if cv is None:
+            return None
+        cv.file_content, cv.file_mime, cv.file_size = content, mime, len(content)
+        await self._session.commit()
+        await self._session.refresh(cv)
+        return cv
+
+    async def get_file(self, cv_id: int) -> tuple[str, str, bytes] | None:
+        row = (
+            await self._session.execute(
+                select(CV.filename, CV.file_mime, CV.file_content).where(CV.id == cv_id)
+            )
+        ).first()
+        if row is None or not row.file_content:
+            return None
+        return row.filename, row.file_mime or "application/octet-stream", bytes(row.file_content)
 
     async def update_parsed_data(self, cv_id: int, parsed_data: dict) -> CV | None:
         cv = await self.get_by_id(cv_id)

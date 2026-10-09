@@ -45,3 +45,9 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .dark .bg-purple-100 { background-color: #3b0764 !important; }
 .dark .bg-gray-900   { background-color: #020617 !important; }
 .dark .border-gray-700 { border-color: #1e293b !important; }
+
+/* Riga del CV base nella pagina Curriculum */
+.cv-row-base { background-color: #dbeafe; }
+.dark .cv-row-base { background-color: #1e40af !important; }
+.dark .cv-row-base .text-gray-500, .dark .cv-row-base .text-gray-400 { color: #cbd5e1 !important; }
+.dark .cv-row-base .text-blue-600 { color: #bfdbfe !important; }

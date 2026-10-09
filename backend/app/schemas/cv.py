@@ -56,6 +56,7 @@ class CVUploadResponse(BaseModel):
     kind: str = "altro"
     is_base: bool = False
     archived: bool = False
+    has_file: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -70,6 +71,7 @@ class CVDetailResponse(BaseModel):
     kind: str = "altro"
     is_base: bool = False
     archived: bool = False
+    has_file: bool = False
 
     model_config = {"from_attributes": True}
 

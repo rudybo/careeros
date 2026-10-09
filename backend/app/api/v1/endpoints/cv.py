@@ -1,5 +1,7 @@
 import json
 import logging
+import re
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,16 @@ from app.services.cv_extractor import CVExtractionError, UnsupportedFileTypeErro
 from app.services.ollama_service import OllamaParsingError, OllamaUnavailableError, parse_cv_with_ollama
 
 logger = logging.getLogger(__name__)
+
+_MIME_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _safe_filename(name: str) -> str:
+    name = re.sub(r'["\\\r\n]', "", name)
+    return re.sub(r"[^\x20-\x7e]", "_", name) or "cv"
 
 router = APIRouter(prefix="/cv", tags=["CV"])
 
@@ -62,6 +74,7 @@ def _build_detail_response(cv) -> CVDetailResponse:
         kind=cv.kind,
         is_base=cv.is_base,
         archived=cv.archived,
+        has_file=cv.has_file,
     )
 
 
@@ -86,7 +99,12 @@ async def upload_cv(file: UploadFile, kind: str = Form("altro"), db: AsyncSessio
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
     repo = CVRepository(db)
-    cv = await repo.create(filename=file.filename, raw_text=raw_text)
+    cv = await repo.create(
+        filename=file.filename,
+        raw_text=raw_text,
+        file_content=content,
+        file_mime=_MIME_BY_EXT.get(Path(file.filename).suffix.lower()),
+    )
     if kind != "altro":
         cv = await repo.set_kind(cv.id, kind)
 
@@ -110,6 +128,20 @@ async def parse_cv(cv_id: int, background_tasks: BackgroundTasks, db: AsyncSessi
 
     logger.info("Parsing avviato in background: cv_id=%d", cv_id)
     return {"cv_id": cv_id, "status": "parsing", "message": "Parsing avviato. Usa GET /cv/{id} per monitorare lo stato."}
+
+
+@router.get("/{cv_id}/file")
+async def get_cv_file(cv_id: int, db: AsyncSession = Depends(get_db)):
+    found = await CVRepository(db).get_file(cv_id)
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File originale non disponibile.")
+    filename, mime, data = found
+    disposition = "inline" if mime == "application/pdf" else "attachment"
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Content-Disposition": f'{disposition}; filename="{_safe_filename(filename)}"'},
+    )
 
 
 @router.get("/{cv_id}", response_model=CVDetailResponse)

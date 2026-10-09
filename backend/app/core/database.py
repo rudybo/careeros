@@ -52,6 +52,9 @@ async def _migrate_add_columns(conn) -> None:
     await conn.run_sync(_add_if_missing, "cvs", "kind", "VARCHAR(20) DEFAULT 'altro'")
     await conn.run_sync(_add_if_missing, "cvs", "is_base", "BOOLEAN DEFAULT 0")
     await conn.run_sync(_add_if_missing, "cvs", "archived", "BOOLEAN DEFAULT 0")
+    await conn.run_sync(_add_if_missing, "cvs", "file_content", "BLOB")
+    await conn.run_sync(_add_if_missing, "cvs", "file_mime", "VARCHAR(100)")
+    await conn.run_sync(_add_if_missing, "cvs", "file_size", "INTEGER")
     # DEFAULT 1: le offerte esistenti (pre-feature) risultano già notificate, niente flood.
     # Le nuove offerte inserite dall'ORM usano il default del modello (False) → verranno notificate.
     await conn.run_sync(_add_if_missing, "job_opportunities", "notified", "BOOLEAN DEFAULT 1")

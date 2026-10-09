@@ -1,9 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { fetchCVList, deleteCV, startAnalysis, updateCV } from '../api/client'
+import { cvFileUrl, fetchCVList, deleteCV, startAnalysis, updateCV } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
 import { ArrowLeftIcon, FileTextIcon, Trash2Icon, RefreshCwIcon, ChevronRightIcon, ArchiveRestoreIcon } from 'lucide-react'
+
+import type { CV } from '../types'
+
+function HistoryLink({ cv, children }: { cv: CV; children: React.ReactNode }) {
+  const cls = 'flex items-center gap-3 flex-1 min-w-0'
+  return cv.has_file
+    ? <a href={cvFileUrl(cv.id)} target="_blank" rel="noreferrer" title="Apri il file originale" className={cls}>{children}</a>
+    : <Link to={`/cv/${cv.id}`} className={cls}>{children}</Link>
+}
 
 export default function CVHistory() {
   const qc = useQueryClient()
@@ -64,7 +73,7 @@ export default function CVHistory() {
           <ul className="divide-y divide-gray-100">
             {sorted.map(cv => (
               <li key={cv.id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50">
-                <Link to={`/cv/${cv.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                <HistoryLink cv={cv}>
                   <FileTextIcon size={18} className="text-gray-400 shrink-0" />
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-gray-800 truncate">
@@ -75,7 +84,7 @@ export default function CVHistory() {
                       {new Date(cv.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </div>
                   </div>
-                </Link>
+                </HistoryLink>
                 <div className="flex items-center gap-2 ml-4 shrink-0">
                   <StatusBadge status={cv.status} />
                   {cv.id === latestId && cv.status === 'parsed' && (

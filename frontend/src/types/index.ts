@@ -17,6 +17,7 @@ export interface CV {
   kind: CVKind
   is_base: boolean
   archived: boolean
+  has_file: boolean
 }
 
 export interface WorkExperience {

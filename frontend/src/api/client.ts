@@ -6,6 +6,9 @@ const api = axios.create({ baseURL: '/api/v1' })
 export const documentUrl = (appId: number, docId: number): string =>
   `${api.defaults.baseURL}/applications/${appId}/documents/${docId}`
 
+export const cvFileUrl = (cvId: number): string =>
+  `${api.defaults.baseURL}/cv/${cvId}/file`
+
 // ── System info ─────────────────────────────────────────────────────────────
 export interface SystemInfo { provider: string; model: string; version: string }
 export const fetchInfo = () =>
