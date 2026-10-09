@@ -1,7 +1,10 @@
 import axios from 'axios'
-import type { CVDetail, AnalysisRecord, JobApplication, JobApplicationDetail, UserPreferences, JobOpportunity, RoadmapItem, AtsKeywordItem } from '../types'
+import type { CVKind, CVDetail, AnalysisRecord, JobApplication, JobApplicationDetail, UserPreferences, JobOpportunity, RoadmapItem, AtsKeywordItem } from '../types'
 
 const api = axios.create({ baseURL: '/api/v1' })
+
+export const documentUrl = (appId: number, docId: number): string =>
+  `${api.defaults.baseURL}/applications/${appId}/documents/${docId}`
 
 // ── System info ─────────────────────────────────────────────────────────────
 export interface SystemInfo { provider: string; model: string; version: string }
@@ -21,9 +24,10 @@ export const restartSystem = () =>
   api.post('/system/restart')
 
 // ── CV ────────────────────────────────────────────────────────────────────────
-export const uploadCV = (file: File) => {
+export const uploadCV = (file: File, kind: CVKind = 'altro') => {
   const form = new FormData()
   form.append('file', file)
+  form.append('kind', kind)
   return api.post<{ id: number; filename: string; status: string }>('/cv/upload', form)
 }
 
@@ -33,8 +37,11 @@ export const parseCV = (cvId: number) =>
 export const fetchCV = (cvId: number) =>
   api.get<CVDetail>(`/cv/${cvId}`).then(r => r.data)
 
-export const fetchCVList = () =>
-  api.get<CVDetail[]>('/cv/').then(r => r.data)
+export const fetchCVList = (archived?: boolean) =>
+  api.get<CVDetail[]>('/cv/', { params: archived === undefined ? undefined : { archived } }).then(r => r.data)
+
+export const updateCV = (cvId: number, patch: { kind?: CVKind; is_base?: boolean; archived?: boolean }) =>
+  api.patch<CVDetail>(`/cv/${cvId}`, patch).then(r => r.data)
 
 export const deleteCV = (cvId: number) =>
   api.delete(`/cv/${cvId}`)
@@ -79,6 +86,9 @@ export const updateApplicationMeta = (
 
 export const startTailoredDraft = (appId: number) =>
   api.post(`/applications/${appId}/draft`)
+
+export const checkSent = (appId: number) =>
+  api.post<{ checked: number; sent: { application_id: number }[] }>(`/applications/${appId}/check-sent`).then(r => r.data)
 
 export const startOptimization = (appId: number) =>
   api.post(`/applications/${appId}/analyze`)

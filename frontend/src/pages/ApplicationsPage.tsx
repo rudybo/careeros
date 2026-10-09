@@ -20,10 +20,10 @@ export default function ApplicationsPage() {
 
   const { data: cvs = [] } = useQuery({
     queryKey: ['cvs'],
-    queryFn: fetchCVList,
+    queryFn: () => fetchCVList(),
   })
 
-  const parsedCVs = cvs.filter(c => c.status === 'parsed')
+  const parsedCVs = cvs.filter(c => !c.archived && c.status === 'parsed')
 
   const create = useMutation({
     mutationFn: async () => {

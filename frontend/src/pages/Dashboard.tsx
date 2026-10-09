@@ -152,10 +152,10 @@ const STATUS_ORDER: JobApplication['status'][] = ['offer', 'interview', 'applied
 
 export default function Dashboard() {
   const [showAgents, setShowAgents] = useState(false)
-  const { data: cvs = [] } = useQuery({ queryKey: ['cvs'], queryFn: fetchCVList })
+  const { data: cvs = [] } = useQuery({ queryKey: ['cvs'], queryFn: () => fetchCVList() })
   const { data: apps = [] } = useQuery({ queryKey: ['applications'], queryFn: fetchApplicationList })
 
-  const parsedCVs = cvs.filter(c => c.status === 'parsed').length
+  const parsedCVs = cvs.filter(c => !c.archived && c.status === 'parsed').length
   const readyApps = apps.filter(a => ['ready', 'applied', 'interview', 'offer'].includes(a.status))
   const bestStatus = apps.reduce((best: string, app) => {
     const bi = STATUS_ORDER.indexOf(best as JobApplication['status'])

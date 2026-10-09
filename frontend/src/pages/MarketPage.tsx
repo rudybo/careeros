@@ -136,8 +136,9 @@ export default function MarketPage() {
   const [activeFilter, setActiveFilter] = useState<string | undefined>(undefined)
   const [sourceFilter, setSourceFilter] = useState<string | undefined>(undefined)
 
-  const { data: cvs = [] } = useQuery({ queryKey: ['cvs'], queryFn: fetchCVList })
-  const parsedCV = cvs.find(c => c.status === 'parsed')
+  const { data: cvs = [] } = useQuery({ queryKey: ['cvs', 'active'], queryFn: () => fetchCVList(false) })
+  const parsedCV = cvs.find(c => c.is_base && !c.archived && c.status === 'parsed')
+    ?? cvs.find(c => !c.archived && c.status === 'parsed')
 
   const { data: searchStatus } = useQuery({
     queryKey: ['searchStatus'],

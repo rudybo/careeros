@@ -1,10 +1,12 @@
 import { useRef, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { uploadCV, parseCV, fetchCVList, fetchCV, fetchAnalysisList, startAnalysis } from '../api/client'
+import { uploadCV, parseCV, fetchCVList, fetchCV, fetchAnalysisList, startAnalysis, updateCV } from '../api/client'
+import { CV_KINDS } from '../types'
+import type { CVKind } from '../types'
 import AgentBubble from '../components/AgentBubble'
 import {
-  UploadCloudIcon, ListChecksIcon, HistoryIcon, FileTextIcon,
+  UploadCloudIcon, ListChecksIcon, HistoryIcon, FileTextIcon, ArchiveIcon,
   SparklesIcon, TrendingUpIcon, Loader2Icon,
 } from 'lucide-react'
 
@@ -18,15 +20,18 @@ export default function CVPage() {
   const qc = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadKind, setUploadKind] = useState<CVKind>('altro')
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   const retryRef = useRef<{ cvId: number; attempts: number } | null>(null)
 
-  const { data: cvs = [] } = useQuery({
+  const { data: allCvs = [] } = useQuery({
     queryKey: ['cvs'],
-    queryFn: fetchCVList,
+    queryFn: () => fetchCVList(),
     refetchInterval: (q) => (q.state.data ?? []).some(c => c.status === 'parsing') ? 2000 : false,
   })
+  const cvs = allCvs.filter(c => !c.archived)
 
-  // CV corrente = l'ultimo caricato (id più alto)
+  // CV corrente = l'ultimo caricato attivo (id più alto)
   const current = [...cvs].sort((a, b) => b.id - a.id)[0]
 
   const { data: cv } = useQuery({
@@ -50,7 +55,7 @@ export default function CVPage() {
   const upload = useMutation({
     mutationFn: async (file: File) => {
       setUploadError(null)
-      const { data } = await uploadCV(file)
+      const { data } = await uploadCV(file, uploadKind)
       await parseCV(data.id)   // il backend, finito il parsing, analizza in automatico
       return data
     },
@@ -75,6 +80,13 @@ export default function CVPage() {
     return () => clearTimeout(t)
   }, [cv?.id, cv?.status, latest?.id, latest?.status, latestCompleted?.id, qc])
 
+  const patchCV = useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: Parameters<typeof updateCV>[1] }) => updateCV(id, patch),
+    onMutate: () => setCatalogError(null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cvs'] }),
+    onError: (e: any) => setCatalogError(e?.response?.data?.detail ?? 'Operazione non riuscita'),
+  })
+
   const handleFile = (file: File) => {
     if (!file.name.match(/\.(pdf|docx)$/i)) {
       setUploadError('Formato non supportato. Carica un file PDF o DOCX.')
@@ -87,6 +99,10 @@ export default function CVPage() {
     <>
       <input ref={inputRef} type="file" accept=".pdf,.docx" className="hidden"
         onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+      <select aria-label="Tipo del nuovo curriculum" value={uploadKind} onChange={e => setUploadKind(e.target.value as CVKind)}
+        className="px-2 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700">
+        {CV_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+      </select>
       <button onClick={() => inputRef.current?.click()} disabled={upload.isPending}
         className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60">
         <UploadCloudIcon size={15} />
@@ -169,6 +185,42 @@ export default function CVPage() {
       )}
 
       {uploadError && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{uploadError}</div>}
+
+      {/* I tuoi curriculum (attivi) */}
+      <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+        <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">I tuoi curriculum</h2>
+        <ul className="divide-y divide-gray-100">
+          {[...cvs].sort((a, b) => b.id - a.id).map(c => (
+            <li key={c.id} className="py-2 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 sm:items-center">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileTextIcon size={14} className="text-gray-400 shrink-0" />
+                <span className="text-sm text-gray-800 truncate">{c.filename}</span>
+                {c.is_base && <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full font-medium shrink-0">Base</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select aria-label={`Tipo di ${c.filename}`} value={c.kind ?? 'altro'}
+                  onChange={e => patchCV.mutate({ id: c.id, patch: { kind: e.target.value as CVKind } })}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white text-gray-700">
+                  {CV_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                </select>
+                {!c.is_base && c.status === 'parsed' && (
+                  <button onClick={() => patchCV.mutate({ id: c.id, patch: { is_base: true } })} disabled={patchCV.isPending}
+                    className="px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60">
+                    Usa come base
+                  </button>
+                )}
+                <button onClick={() => patchCV.mutate({ id: c.id, patch: { archived: true } })}
+                  disabled={patchCV.isPending || c.is_base}
+                  title={c.is_base ? 'Imposta prima un altro CV come base' : 'Sposta nello storico'}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                  <ArchiveIcon size={12} /> Metti in storico
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {catalogError && <p className="mt-2 text-sm text-red-600">{catalogError}</p>}
+      </div>
 
       <AgentBubble name="Minerva" active={working} message={minervaMsg} />
 

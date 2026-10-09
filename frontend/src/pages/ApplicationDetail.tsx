@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchApplication, updateApplicationStatus, startCoverLetter, startTailoredDraft, updateApplicationMeta } from '../api/client'
+import { fetchApplication, updateApplicationStatus, startCoverLetter, startTailoredDraft, checkSent, updateApplicationMeta, documentUrl } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
 import AgentBubble from '../components/AgentBubble'
 import {
   ArrowLeftIcon, CheckCircleIcon, XCircleIcon, AlertTriangleIcon,
-  FileTextIcon, MailIcon, SparklesIcon, CopyIcon, CheckIcon, Loader2Icon, ExternalLinkIcon,
+  FileTextIcon, MailIcon, SparklesIcon, CopyIcon, CheckIcon, Loader2Icon, ExternalLinkIcon, SendIcon,
 } from 'lucide-react'
 import type { JobApplication } from '../types'
 
@@ -91,6 +91,16 @@ export default function ApplicationDetail() {
       const d = e?.response?.data?.detail
       setDraftError((typeof d === 'string' ? d : null) ?? e?.message ?? 'Errore')
     },
+  })
+
+  const [sentMsg, setSentMsg] = useState<string | null>(null)
+  const checkSentMut = useMutation({
+    mutationFn: () => checkSent(appId),
+    onSuccess: (r) => {
+      setSentMsg(r.sent.length > 0 ? 'Invio rilevato ✓' : 'Non risulta ancora inviata')
+      qc.invalidateQueries({ queryKey: ['application', appId] })
+    },
+    onError: () => setSentMsg('Controllo non riuscito'),
   })
 
   const saveMeta = useMutation({
@@ -337,13 +347,29 @@ export default function ApplicationDetail() {
                   )}
                   <span>Controlla e premi Invia</span>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                {!['applied', 'interview', 'offer', 'rejected'].includes(app.status) && (
+                  <>
+                    <button
+                      onClick={() => { setSentMsg(null); checkSentMut.mutate() }}
+                      disabled={checkSentMut.isPending}
+                      className="inline-flex items-center gap-1 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
+                    >
+                      {checkSentMut.isPending && <Loader2Icon size={14} className="animate-spin" />}
+                      Controlla invio
+                    </button>
+                    {sentMsg && <span className="text-xs text-gray-600 dark:text-gray-300">{sentMsg}</span>}
+                  </>
+                )}
                 <button
                   onClick={() => createDraft.mutate()}
                   disabled={createDraft.isPending}
-                  className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                  title="La bozza precedente resta in Gmail"
+                  className="px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 disabled:opacity-60"
                 >
-                  Rigenera
+                  Rigenera bozza Gmail
                 </button>
+                </div>
               </div>
             )}
             {app.draft_status === 'error' && (
@@ -358,6 +384,69 @@ export default function ApplicationDetail() {
                 </button>
               </div>
             )}
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {['applied', 'interview', 'offer', 'rejected'].includes(app.status) ? (
+                ['applied', 'interview', 'offer'].includes(app.status) && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700">
+                    ✓ Candidato
+                    {app.sent_at
+                      ? ` · Inviata il ${new Date(app.sent_at).toLocaleDateString('it-IT')}`
+                      : app.applied_at && ` · ${new Date(app.applied_at).toLocaleDateString('it-IT')}`}
+                  </span>
+                )
+              ) : (
+                <button
+                  onClick={() => updateStatus.mutate('applied', {
+                    onError: (e: any) => {
+                      const d = e?.response?.data?.detail
+                      setDraftError((typeof d === 'string' ? d : null) ?? e?.message ?? 'Errore')
+                    },
+                  })}
+                  disabled={updateStatus.isPending}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <SendIcon size={14} /> Mi sono candidato
+                </button>
+              )}
+            </div>
+            {(() => {
+              const cvDocs =(app.documents ?? []).filter(d => d.kind === 'cv_su_misura')
+              const [latest, ...older] = cvDocs
+              const fmt = (d: { created_at: string }) => new Date(d.created_at).toLocaleDateString('it-IT')
+              const linkCls = 'text-xs font-medium text-blue-600 hover:underline'
+              if (!latest) {
+                return app.draft_status === 'ready' ? (
+                  <p className="mt-3 text-xs text-gray-400">Nessun allegato salvato (bozza creata prima dell'archivio)</p>
+                ) : null
+              }
+              return (
+                <div className="mt-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Allegato</span>
+                    <FileTextIcon size={14} className="text-red-500 shrink-0" />
+                    <span className="min-w-0 break-all text-gray-700">{latest.filename}</span>
+                    <span className="text-xs text-gray-400">{Math.round(latest.size / 1024)} KB · {fmt(latest)}</span>
+                    <a href={documentUrl(app.id, latest.id)} target="_blank" rel="noreferrer" className={linkCls}>Apri</a>
+                    <a href={documentUrl(app.id, latest.id)} download={latest.filename} className={linkCls}>Scarica</a>
+                  </div>
+                  {older.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-gray-500">Versioni precedenti ({older.length})</summary>
+                      <ul className="mt-1 space-y-1">
+                        {older.map(d => (
+                          <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <FileTextIcon size={14} className="text-gray-400 shrink-0" />
+                            <span className="min-w-0 break-all text-gray-600">{d.filename}</span>
+                            <span className="text-xs text-gray-400">{Math.round(d.size / 1024)} KB · {fmt(d)}</span>
+                            <a href={documentUrl(app.id, d.id)} target="_blank" rel="noreferrer" className={linkCls}>Apri</a>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )
+            })()}
           </div>
 
           {/* ── Cover Letter Generator ── */}

@@ -75,6 +75,16 @@ class StatusEvent(BaseModel):
     at: datetime
 
 
+class DocumentMeta(BaseModel):
+    id: int
+    kind: str
+    filename: str
+    size: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class JobApplicationDetailResponse(BaseModel):
     id: int
     cv_id: int
@@ -92,6 +102,8 @@ class JobApplicationDetailResponse(BaseModel):
     tailored_cv: ParsedCV | None = None
     draft_url: str | None = None
     draft_status: str = "idle"
+    documents: list[DocumentMeta] = []
+    sent_at: datetime | None = None
     applied_at: datetime | None
     created_at: datetime
     updated_at: datetime

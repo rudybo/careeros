@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -14,6 +14,9 @@ class CV(Base):
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     parsed_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
     status: Mapped[str] = mapped_column(String(50), default="uploaded")
+    kind: Mapped[str] = mapped_column(String(20), default="altro", server_default="altro")
+    is_base: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

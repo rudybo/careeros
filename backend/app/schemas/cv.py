@@ -53,6 +53,9 @@ class CVUploadResponse(BaseModel):
     filename: str
     status: str
     created_at: datetime
+    kind: str = "altro"
+    is_base: bool = False
+    archived: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -64,5 +67,14 @@ class CVDetailResponse(BaseModel):
     parsed_data: ParsedCV | None
     created_at: datetime
     updated_at: datetime
+    kind: str = "altro"
+    is_base: bool = False
+    archived: bool = False
 
     model_config = {"from_attributes": True}
+
+
+class CVPatch(BaseModel):
+    kind: str | None = None
+    is_base: bool | None = None
+    archived: bool | None = None

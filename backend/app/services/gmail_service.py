@@ -2,6 +2,7 @@
 import base64
 import logging
 import os
+from datetime import datetime, timezone
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -66,7 +67,7 @@ def _build_message(to: str, subject: str, body: str, attachments: list[tuple[str
 
 
 def create_draft(to: str, subject: str, body: str, attachments: list[tuple[str, bytes]] | None = None) -> dict:
-    """Create a Gmail draft in the CareerOS label. Returns {'draft_id', 'gmail_url'}."""
+    """Create a Gmail draft in the CareerOS label. Returns {'draft_id', 'gmail_url', 'thread_id'}."""
     service = get_gmail_service()
     label_id = _get_or_create_label(service)
 
@@ -80,6 +81,7 @@ def create_draft(to: str, subject: str, body: str, attachments: list[tuple[str, 
 
     draft_id = draft["id"]
     message_id = draft.get("message", {}).get("id", "")
+    thread_id = draft.get("message", {}).get("threadId", "") or ""
 
     # Apply CareerOS label to the draft message
     if message_id and label_id:
@@ -91,4 +93,49 @@ def create_draft(to: str, subject: str, body: str, attachments: list[tuple[str, 
 
     gmail_url = f"https://mail.google.com/mail/u/0/#drafts/{message_id}" if message_id else "https://mail.google.com/mail/u/0/#drafts"
     logger.info("Bozza creata: draft_id=%s label=%s", draft_id, LABEL_NAME)
-    return {"draft_id": draft_id, "gmail_url": gmail_url}
+    return {"draft_id": draft_id, "gmail_url": gmail_url, "thread_id": thread_id}
+
+
+def thread_id_from_draft_url(service, draft_url: str | None) -> str | None:
+    """threadId del messaggio-bozza il cui id sta dopo '#drafts/' nell'URL."""
+    if not draft_url or "#drafts/" not in draft_url:
+        return None
+    message_id = draft_url.split("#drafts/", 1)[1].strip().split("?")[0].strip("/")
+    if not message_id:
+        return None
+    try:
+        msg = service.users().messages().get(userId="me", id=message_id, format="minimal").execute()
+    except HttpError as e:
+        if getattr(e.resp, "status", None) == 404:
+            return None
+        raise
+    return msg.get("threadId") or None
+
+
+def _sent_time_from_thread(thread) -> datetime | None:
+    """Istante (UTC) del primo messaggio realmente inviato (SENT e non DRAFT)."""
+    if not isinstance(thread, dict):
+        return None
+    times: list[datetime] = []
+    for m in thread.get("messages") or []:
+        if not isinstance(m, dict):
+            continue
+        labels = m.get("labelIds") or []
+        if "SENT" not in labels or "DRAFT" in labels:
+            continue
+        try:
+            times.append(datetime.fromtimestamp(int(m["internalDate"]) / 1000, tz=timezone.utc))
+        except (KeyError, TypeError, ValueError, OverflowError, OSError):
+            continue
+    return min(times) if times else None
+
+
+def get_sent_time(service, thread_id: str) -> datetime | None:
+    """Orario reale d'invio del thread, None se non inviato o thread eliminato."""
+    try:
+        thread = service.users().threads().get(userId="me", id=thread_id, format="minimal").execute()
+    except HttpError as e:
+        if getattr(e.resp, "status", None) == 404:
+            return None
+        raise
+    return _sent_time_from_thread(thread)

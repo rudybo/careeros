@@ -28,6 +28,7 @@ async def test_build_tailored_draft_wires_everything():
     assert kwargs["attachments"][0][1] == b"%PDF-x" and kwargs["attachments"][0][0].endswith(".pdf")
     assert res["draft_id"] == "D1" and res["advertiser_type"] == "recruiter"
     assert res["contact_email"] == "hr@acme.it"
+    assert res["pdf_bytes"] == b"%PDF-x" and res["pdf_filename"] == kwargs["attachments"][0][0]
 
 
 async def test_build_tailored_draft_skips_detection_when_known():
@@ -42,3 +43,10 @@ async def test_build_tailored_draft_skips_detection_when_known():
             CV, "Acme", "Dev", "jd", advertiser_type="direct", contact_email="a@b.it")
     parse.assert_not_awaited()
     assert res["advertiser_type"] == "direct" and res["contact_email"] == "a@b.it"
+
+
+def test_pdf_filename_normalizes_case():
+    assert application_draft._pdf_filename("RUDY BOTOSSO") == "CV_Rudy_Botosso.pdf"
+    assert application_draft._pdf_filename("rudy botosso") == "CV_Rudy_Botosso.pdf"
+    assert application_draft._pdf_filename("Mario McDonald") == "CV_Mario_McDonald.pdf"
+    assert application_draft._pdf_filename("") == "CV_CV.pdf"

@@ -73,7 +73,7 @@ async def test_run_create_draft_success(db_session):
          patch.object(market_ep, "build_tailored_draft", new=build), \
          patch.object(market_ep, "resolve_job_text", new=AsyncMock(return_value=("full", True))):
         out = await market_ep._run_create_draft(oid, _CV, "Dev", "Acme", "snippet", url="https://x/1")
-    assert out == {**res, "used_full_posting": True}
+    assert out == {**res, "used_full_posting": True, "registered": False}
     assert build.call_args.args[3] == "full"
     opp = await repo.get_by_id(oid)
     assert opp.draft_status == "ready" and opp.advertiser_type == "recruiter" and opp.gmail_url == "https://g/1"

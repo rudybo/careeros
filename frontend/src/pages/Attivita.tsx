@@ -14,7 +14,7 @@ export default function Attivita() {
 
   // La to-do è di carriera (globale): basta un CV "parsed" per interrogare gli endpoint,
   // che restituiscono comunque tutte le voci (get_all sul backend).
-  const { data: cvs = [] } = useQuery({ queryKey: ['cvs'], queryFn: fetchCVList })
+  const { data: cvs = [] } = useQuery({ queryKey: ['cvs'], queryFn: () => fetchCVList() })
   const parsedCV = cvs.find(c => c.status === 'parsed')
   const cvId = parsedCV?.id ?? 0
 

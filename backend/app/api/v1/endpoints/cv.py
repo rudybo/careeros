@@ -1,14 +1,14 @@
 import json
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.repositories.application_repository import ApplicationRepository
-from app.repositories.cv_repository import CVRepository
-from app.schemas.cv import CVDetailResponse, CVUploadResponse, ParsedCV
+from app.repositories.cv_repository import BASE_BLOCK_MSG, CV_KINDS, CVRepository
+from app.schemas.cv import CVDetailResponse, CVPatch, CVUploadResponse, ParsedCV
 from app.services.cv_extractor import CVExtractionError, UnsupportedFileTypeError, extract_text
 from app.services.ollama_service import OllamaParsingError, OllamaUnavailableError, parse_cv_with_ollama
 
@@ -59,11 +59,16 @@ def _build_detail_response(cv) -> CVDetailResponse:
         parsed_data=parsed_data,
         created_at=cv.created_at,
         updated_at=cv.updated_at,
+        kind=cv.kind,
+        is_base=cv.is_base,
+        archived=cv.archived,
     )
 
 
 @router.post("/upload", response_model=CVUploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_cv(file: UploadFile, db: AsyncSession = Depends(get_db)):
+async def upload_cv(file: UploadFile, kind: str = Form("altro"), db: AsyncSession = Depends(get_db)):
+    if kind not in CV_KINDS:
+        raise HTTPException(status_code=422, detail=f"Tipo non valido. Valori: {list(CV_KINDS)}")
     content = await file.read()
 
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
@@ -82,6 +87,8 @@ async def upload_cv(file: UploadFile, db: AsyncSession = Depends(get_db)):
 
     repo = CVRepository(db)
     cv = await repo.create(filename=file.filename, raw_text=raw_text)
+    if kind != "altro":
+        cv = await repo.set_kind(cv.id, kind)
 
     logger.info("CV caricato: id=%d filename=%s", cv.id, cv.filename)
     return cv
@@ -122,6 +129,8 @@ async def delete_cv(cv_id: int, db: AsyncSession = Depends(get_db)):
     cv = await repo.get_by_id(cv_id)
     if cv is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CV non trovato.")
+    if cv.is_base:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=BASE_BLOCK_MSG)
     # Cascade: remove linked applications first
     app_repo = ApplicationRepository(db)
     n = await app_repo.delete_by_cv_id(cv_id)
@@ -133,6 +142,33 @@ async def delete_cv(cv_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/", response_model=list[CVUploadResponse])
-async def list_cvs(db: AsyncSession = Depends(get_db)):
+async def list_cvs(archived: bool | None = None, db: AsyncSession = Depends(get_db)):
     repo = CVRepository(db)
-    return await repo.get_all()
+    cvs = await repo.get_all()
+    if archived is None:
+        return cvs
+    return [c for c in cvs if c.archived == archived]
+
+
+@router.patch("/{cv_id}", response_model=CVUploadResponse)
+async def patch_cv(cv_id: int, body: CVPatch, db: AsyncSession = Depends(get_db)):
+    repo = CVRepository(db)
+    cv = await repo.get_by_id(cv_id)
+    if cv is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CV non trovato.")
+    fields = body.model_fields_set
+    if "kind" in fields and body.kind is not None and body.kind not in CV_KINDS:
+        raise HTTPException(status_code=422, detail=f"Tipo non valido. Valori: {list(CV_KINDS)}")
+    try:
+        if "kind" in fields and body.kind is not None:
+            cv = await repo.set_kind(cv_id, body.kind)
+        if "is_base" in fields and body.is_base is not None:
+            if body.is_base:
+                cv = await repo.set_base(cv_id)
+            elif cv.is_base:
+                raise ValueError(BASE_BLOCK_MSG)
+        if "archived" in fields and body.archived is not None:
+            cv = await (repo.archive(cv_id) if body.archived else repo.unarchive(cv_id))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    return cv

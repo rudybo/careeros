@@ -1,7 +1,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.cover_letter import agent as cover_letter_agent
@@ -15,6 +15,7 @@ from app.repositories.cv_repository import CVRepository
 from app.schemas.application import (
     CoverLetter,
     CVOptimization,
+    DocumentMeta,
     JobApplicationCreate,
     JobApplicationDetailResponse,
     JobApplicationResponse,
@@ -23,6 +24,7 @@ from app.schemas.application import (
 )
 from app.schemas.cv import ParsedCV
 from app.services.application_draft import run_application_draft
+from app.services.sent_check import check_sent_applications, get_candidates
 from app.services.job_fetcher import JobFetchError, fetch_job_posting
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ async def _run_cover_letter(app_id: int, cv_parsed_data: dict, company: str, rol
             logger.error("Cover Letter fallita: application_id=%d error=%s", app_id, e, exc_info=True)
 
 
-def _build_detail(record) -> JobApplicationDetailResponse:
+def _build_detail(record, documents: list | None = None) -> JobApplicationDetailResponse:
     optimization = None
     if record.optimization_data:
         optimization = CVOptimization(**json.loads(record.optimization_data))
@@ -85,6 +87,8 @@ def _build_detail(record) -> JobApplicationDetailResponse:
         tailored_cv=ParsedCV(**json.loads(record.tailored_cv)) if record.tailored_cv else None,
         draft_url=record.draft_url,
         draft_status=record.draft_status or "idle",
+        documents=[DocumentMeta.model_validate(d) for d in (documents or [])],
+        sent_at=record.sent_at,
         applied_at=record.applied_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -142,6 +146,23 @@ async def create_application(body: JobApplicationCreate, db: AsyncSession = Depe
     )
     logger.info("Candidatura creata: id=%d company=%s role=%s", record.id, record.company, record.role)
     return record
+
+
+@router.post("/check-sent")
+async def check_sent_all(db: AsyncSession = Depends(get_db)):
+    """Controlla su Gmail quali bozze risultano inviate (tutte le candidabili)."""
+    checked = len(await get_candidates(db))
+    sent = await check_sent_applications(db)
+    return {"checked": checked, "sent": sent}
+
+
+@router.post("/{app_id}/check-sent")
+async def check_sent_one(app_id: int, db: AsyncSession = Depends(get_db)):
+    if await ApplicationRepository(db).get_by_id(app_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidatura non trovata.")
+    checked = len(await get_candidates(db, app_id))
+    sent = await check_sent_applications(db, app_id=app_id)
+    return {"checked": checked, "sent": sent}
 
 
 @router.post("/{app_id}/analyze", status_code=status.HTTP_202_ACCEPTED)
@@ -277,4 +298,27 @@ async def get_application(app_id: int, db: AsyncSession = Depends(get_db)):
     record = await repo.get_by_id(app_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidatura non trovata.")
-    return _build_detail(record)
+    documents = await repo.list_documents(app_id)
+    return _build_detail(record, documents)
+
+
+@router.get("/{app_id}/documents", response_model=list[DocumentMeta])
+async def list_documents(app_id: int, db: AsyncSession = Depends(get_db)):
+    repo = ApplicationRepository(db)
+    if await repo.get_by_id(app_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidatura non trovata.")
+    return await repo.list_documents(app_id)
+
+
+@router.get("/{app_id}/documents/{doc_id}")
+async def download_document(app_id: int, doc_id: int, db: AsyncSession = Depends(get_db)):
+    repo = ApplicationRepository(db)
+    doc = await repo.get_document(app_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento non trovato.")
+    safe = "".join(c if c.isascii() and c.isprintable() and c not in ('"', "\\") else "_" for c in doc.filename)
+    return Response(
+        content=doc.content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe}"'},
+    )

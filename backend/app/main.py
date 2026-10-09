@@ -58,6 +58,16 @@ async def _reset_stuck_drafts() -> None:
         await session.commit()
 
 
+async def _pick_cv_for_scheduled_search(session):
+    """CV base (con fallback interno all'helper) se parsato con dati; altrimenti None."""
+    from app.repositories.cv_repository import CVRepository, get_base_cv_id
+    cv_id = await get_base_cv_id(session)
+    if cv_id is None:
+        return None
+    cv = await CVRepository(session).get_by_id(cv_id)
+    return cv if cv and cv.status == "parsed" and cv.parsed_data else None
+
+
 async def _scheduled_market_search() -> None:
     """Ricerca offerte automatica (scheduler). Logga avvio/esito, registra lo
     stato persistente e manda una conferma su Telegram (anche con 0 nuove)."""
@@ -65,7 +75,6 @@ async def _scheduled_market_search() -> None:
     from datetime import datetime
     from app.agents.market_scout import agent as scout
     from app.core import task_state
-    from app.repositories.cv_repository import CVRepository
     from app.repositories.market_repository import OpportunityRepository, PreferencesRepository
     from app.schemas.cv import ParsedCV
     from app.services import telegram_service
@@ -73,11 +82,9 @@ async def _scheduled_market_search() -> None:
     now = datetime.now(ZoneInfo("Europe/Rome")).strftime("%H:%M")
     logger.info("Iris scheduler: AVVIO ricerca automatica (%s)", now)
     async with AsyncSessionLocal() as session:
-        cv_repo = CVRepository(session)
-        cvs = await cv_repo.get_all()
-        parsed = next((c for c in cvs if c.status == "parsed" and c.parsed_data), None)
+        parsed = await _pick_cv_for_scheduled_search(session)
         if not parsed:
-            logger.warning("Iris scheduler: nessun CV parsato trovato, skip.")
+            logger.warning("Iris scheduler: nessun CV base/parsato trovato, skip.")
             task_state.record_search(trigger="auto", error="nessun CV parsato")
             await telegram_service.send_text(f"⚠️ Ricerca automatica {now}: nessun CV parsato, saltata.")
             return
@@ -101,6 +108,18 @@ async def _scheduled_market_search() -> None:
             await telegram_service.send_text(f"⚠️ Ricerca automatica {now} non riuscita: {str(e)[:150]}")
 
 
+async def _sent_check() -> None:
+    """Rileva le bozze Gmail inviate e segna le Candidature (scheduler)."""
+    try:
+        from app.services.sent_check import check_sent_applications
+        async with AsyncSessionLocal() as session:
+            sent = await check_sent_applications(session)
+        if sent:
+            logger.info("Controllo invii: %d candidature rilevate come inviate", len(sent))
+    except Exception as e:
+        logger.warning("Controllo invii fallito: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -110,6 +129,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_market_search, "cron", hour=8,  minute=0, id="iris_morning")
     scheduler.add_job(_scheduled_market_search, "cron", hour=19, minute=0, id="iris_evening")
     scheduler.add_job(_disk_check, "interval", minutes=30, id="disk_check")
+    scheduler.add_job(_sent_check, "interval", minutes=20, id="sent_check")
     scheduler.start()
     app.state.scheduler = scheduler  # per l'health-check /system/health
     logger.info("Iris scheduler avviata: 08:00 e 19:00 (Europe/Rome)")

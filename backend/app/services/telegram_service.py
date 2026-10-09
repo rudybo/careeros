@@ -64,11 +64,13 @@ def _format(opp) -> str:
 
 
 async def send_opportunity(opp) -> None:
-    """Invia la notifica di un'offerta con i 3 bottoni azione (+ link)."""
+    """Invia la notifica di un'offerta con i 4 bottoni azione (+ link)."""
     buttons = [[
         {"text": "📝 Genera bozza", "callback_data": f"draft:{opp.id}"},
         {"text": "🔖 Salva", "callback_data": f"save:{opp.id}"},
         {"text": "🗑 Scarta", "callback_data": f"dismiss:{opp.id}"},
+    ], [
+        {"text": "✅ Candidato", "callback_data": f"applied:{opp.id}"},
     ]]
     if opp.url:
         buttons.append([{"text": "🔗 Vedi annuncio", "url": opp.url}])
@@ -133,6 +135,8 @@ def format_draft_confirmation(result: dict) -> str:
         f"• Destinatario: {dest}",
         "• CV su misura allegato (PDF)",
         f"• Annuncio: {annuncio}",
+        "• Registrata in Candidature" if result.get("registered")
+        else "• Non registrata in Candidature (errore, vedi log)",
     ])
 
 
@@ -140,12 +144,13 @@ async def _do_draft(opp_id: int) -> None:
     import json
     from app.core.database import AsyncSessionLocal
     from app.repositories.market_repository import OpportunityRepository
-    from app.repositories.cv_repository import CVRepository
+    from app.repositories import cv_repository
     from app.api.v1.endpoints.market import _run_create_draft
 
     async with AsyncSessionLocal() as s:
         opp = await OpportunityRepository(s).get_by_id(opp_id)
-        cv = await CVRepository(s).get_by_id(1)
+        base_id = await cv_repository.get_base_cv_id(s)
+        cv = await cv_repository.CVRepository(s).get_by_id(base_id) if base_id is not None else None
         if opp is None or cv is None or not cv.parsed_data:
             await send_text("⚠️ Non riesco a generare la bozza (offerta o CV mancante).")
             return
@@ -165,7 +170,7 @@ async def _do_draft(opp_id: int) -> None:
 
     result = await _run_create_draft(
         opp_id=opp_id, cv_parsed_data=parsed, title=title, company=company,
-        description=description, url=url,
+        description=description, url=url, cv_id=base_id,
     )
 
     if result and result.get("gmail_url"):
@@ -197,6 +202,26 @@ async def _handle_callback(cb: dict) -> None:
             await OpportunityRepository(s).update_status(opp_id, "dismissed")
         await _answer_callback(cb_id, "🗑 Scartata")
         await send_text("🗑 Offerta scartata.")
+    elif action == "applied":
+        try:
+            from app.repositories import cv_repository
+            from app.services import opportunity_application
+            async with AsyncSessionLocal() as s:
+                base_id = await cv_repository.get_base_cv_id(s)
+                app = (await opportunity_application.mark_applied(s, opp_id, base_id)) if base_id is not None else False
+            if app is False:
+                await _answer_callback(cb_id, "⚠️ Nessun CV base")
+            elif app is None:
+                await _answer_callback(cb_id, "⚠️ Offerta non trovata")
+            else:
+                await _answer_callback(cb_id, "✅ Segnata come candidatura")
+                await send_text("✅ Candidatura registrata: offerta segnata come candidata.")
+        except Exception:
+            logger.error("Callback applied fallita: opp %d", opp_id, exc_info=True)
+            try:
+                await _answer_callback(cb_id, "⚠️ Errore")
+            except Exception:
+                logger.error("Risposta callback fallita", exc_info=True)
     elif action == "draft":
         await _answer_callback(cb_id, "📝 Genero la bozza...")
         await _do_draft(opp_id)

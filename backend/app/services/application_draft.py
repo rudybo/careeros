@@ -34,6 +34,9 @@ async def resolve_job_text(url: str | None, fallback: str) -> tuple[str, bool]:
 
 
 def _pdf_filename(full_name: str) -> str:
+    # "RUDY BOTOSSO" / "rudy botosso" -> "Rudy Botosso"; i nomi misti (es. McDonald) restano invariati
+    if full_name.isupper() or full_name.islower():
+        full_name = full_name.title()
     safe = re.sub(r"[^A-Za-z0-9]+", "_", full_name).strip("_") or "CV"
     return f"CV_{safe}.pdf"
 
@@ -60,20 +63,24 @@ async def build_tailored_draft(
         optimization=optimization, advertiser_type=advertiser_type,
     )
     pdf = await asyncio.to_thread(render_cv_pdf, tailored)
+    pdf_filename = _pdf_filename(cv.full_name)
     draft = await asyncio.to_thread(
         gmail_service.create_draft,
         to=contact_email or "",
         subject=letter["subject"],
         body=letter["full_text"],
-        attachments=[(_pdf_filename(cv.full_name), pdf)],
+        attachments=[(pdf_filename, pdf)],
     )
     return {
         "tailored_cv": tailored.model_dump(),
         "cover_letter": letter,
         "draft_id": draft["draft_id"],
         "gmail_url": draft["gmail_url"],
+        "thread_id": draft.get("thread_id", ""),
         "advertiser_type": advertiser_type,
         "contact_email": contact_email,
+        "pdf_bytes": pdf,
+        "pdf_filename": pdf_filename,
     }
 
 
@@ -93,7 +100,13 @@ async def run_application_draft(app_id: int) -> None:
                 record.job_description, record.advertiser_type, record.contact_email, optimization,
             )
             await repo.set_meta(app_id, res["advertiser_type"], res["contact_email"])
-            await repo.update_draft(app_id, res["tailored_cv"], res["cover_letter"], res["gmail_url"])
+            await repo.update_draft(app_id, res["tailored_cv"], res["cover_letter"], res["gmail_url"],
+                                    thread_id=res.get("thread_id"))
+            try:
+                await repo.add_document(app_id, "cv_su_misura", res["pdf_filename"], res["pdf_bytes"])
+            except Exception:  # la bozza Gmail esiste: resta "ready"
+                logger.error("Salvataggio allegato fallito: application_id=%d (bozza Gmail ok)", app_id, exc_info=True)
+                await session.rollback()
             logger.info("Bozza su misura creata: application_id=%d draft_id=%s", app_id, res["draft_id"])
         except Exception as e:  # CVTailorError, CoverLetterError, RuntimeError (Gmail), ...
             logger.error("Bozza su misura fallita: application_id=%d error=%s", app_id, e, exc_info=True)

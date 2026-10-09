@@ -1,9 +1,22 @@
+export type CVKind = 'completo' | 'breve' | 'ats' | 'europass' | 'altro'
+
+export const CV_KINDS: { value: CVKind; label: string }[] = [
+  { value: 'completo', label: 'Completo' },
+  { value: 'breve', label: 'Breve' },
+  { value: 'ats', label: 'ATS' },
+  { value: 'europass', label: 'Europass' },
+  { value: 'altro', label: 'Altro' },
+]
+
 export interface CV {
   id: number
   filename: string
   status: 'pending' | 'parsing' | 'parsed' | 'error'
   created_at: string
   updated_at?: string
+  kind: CVKind
+  is_base: boolean
+  archived: boolean
 }
 
 export interface WorkExperience {
@@ -189,6 +202,14 @@ export interface StatusEvent {
   at: string
 }
 
+export interface ApplicationDocument {
+  id: number
+  kind: string
+  filename: string
+  size: number
+  created_at: string
+}
+
 export interface JobApplicationDetail extends JobApplication {
   job_description: string
   status_history: StatusEvent[]
@@ -199,5 +220,7 @@ export interface JobApplicationDetail extends JobApplication {
   advertiser_type: 'recruiter' | 'direct' | null
   contact_email: string | null
   draft_url: string | null
+  sent_at: string | null
   draft_status: 'idle' | 'generating' | 'ready' | 'error'
+  documents: ApplicationDocument[]
 }

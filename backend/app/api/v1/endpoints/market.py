@@ -18,6 +18,7 @@ from app.schemas.market import (
     UserPreferencesUpdate,
 )
 from app.services.application_draft import build_tailored_draft, resolve_job_text
+from app.services.opportunity_application import mark_applied, record_draft
 from app.agents.cv_tailor.agent import CVTailorError
 
 logger = logging.getLogger(__name__)
@@ -112,14 +113,21 @@ def _deserialize_prefs(prefs) -> None:
         prefs.target_roles = json.loads(prefs.target_roles)
 
 
+async def _resolve_cv_id(db: AsyncSession, cv_id: int | None) -> int | None:
+    """cv_id esplicito, altrimenti il CV base."""
+    from app.repositories import cv_repository
+    return cv_id if cv_id is not None else await cv_repository.get_base_cv_id(db)
+
+
 @router.post("/search", status_code=status.HTTP_202_ACCEPTED)
-async def start_search(background_tasks: BackgroundTasks, cv_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def start_search(background_tasks: BackgroundTasks, cv_id: int | None = None, db: AsyncSession = Depends(get_db)):
     global _search_running
     if _search_running:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ricerca già in corso.")
 
+    cv_id = await _resolve_cv_id(db, cv_id)
     cv_repo = CVRepository(db)
-    cv = await cv_repo.get_by_id(cv_id)
+    cv = await cv_repo.get_by_id(cv_id) if cv_id is not None else None
     if cv is None or not cv.parsed_data:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CV non trovato o non ancora parsato.")
 
@@ -154,7 +162,16 @@ async def update_opportunity_status(opp_id: int, body: OpportunityStatusUpdate, 
     if body.status not in valid:
         raise HTTPException(status_code=422, detail=f"Stato non valido. Valori: {sorted(valid)}")
     repo = OpportunityRepository(db)
-    opp = await repo.update_status(opp_id, body.status)
+    if body.status == "applied":
+        if await repo.get_by_id(opp_id) is None:
+            raise HTTPException(status_code=404, detail="Opportunità non trovata.")
+        base_id = await _resolve_cv_id(db, None)
+        if base_id is None:
+            raise HTTPException(status_code=409, detail="Nessun CV base impostato.")
+        await mark_applied(db, opp_id, base_id)
+        opp = await repo.get_by_id(opp_id)
+    else:
+        opp = await repo.update_status(opp_id, body.status)
     if opp is None:
         raise HTTPException(status_code=404, detail="Opportunità non trovata.")
     return _build_opp_response(opp)
@@ -164,7 +181,7 @@ async def update_opportunity_status(opp_id: int, body: OpportunityStatusUpdate, 
 async def create_draft_email(
     opp_id: int,
     background_tasks: BackgroundTasks,
-    cv_id: int = 1,
+    cv_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a cover letter and create a Gmail draft for the given opportunity."""
@@ -175,8 +192,9 @@ async def create_draft_email(
     if opp.draft_status == "generating":
         raise HTTPException(status_code=409, detail="Bozza già in generazione.")
 
+    cv_id = await _resolve_cv_id(db, cv_id)
     cv_repo = CVRepository(db)
-    cv = await cv_repo.get_by_id(cv_id)
+    cv = await cv_repo.get_by_id(cv_id) if cv_id is not None else None
     if cv is None or not cv.parsed_data:
         raise HTTPException(status_code=409, detail="CV non trovato o non ancora parsato.")
 
@@ -189,12 +207,14 @@ async def create_draft_email(
         company=opp.company or "Azienda",
         description=opp.description or "",
         url=opp.url,
+        cv_id=cv_id,
     )
     return {"status": "generating", "message": "Generazione lettera e bozza Gmail avviata."}
 
 
 async def _run_create_draft(
     opp_id: int, cv_parsed_data: dict, title: str, company: str, description: str, url: str | None = None,
+    cv_id: int | None = None,
 ) -> dict | None:
     try:
         async with AsyncSessionLocal() as session:
@@ -211,7 +231,16 @@ async def _run_create_draft(
                     advertiser_type=result.get("advertiser_type"),
                 )
                 logger.info("Bozza Gmail creata per opportunità %d: %s", opp_id, result["draft_id"])
-                return {**result, "used_full_posting": used_full}
+                registered = False
+                try:
+                    rec_cv_id = cv_id if cv_id is not None else await _resolve_cv_id(session, None)
+                    if rec_cv_id is None:
+                        raise RuntimeError("nessun CV base per registrare la candidatura")
+                    await record_draft(session, opp_id, rec_cv_id, result, job_text)
+                    registered = True
+                except Exception:
+                    logger.error("Registrazione candidatura fallita per opp %d (bozza Gmail ok)", opp_id, exc_info=True)
+                return {**result, "used_full_posting": used_full, "registered": registered}
             except (CoverLetterError, CVTailorError, RuntimeError) as e:
                 logger.error("Errore creazione bozza per opp %d: %s", opp_id, e)
                 await repo.update_draft_status(opp_id, "none")

@@ -1,15 +1,32 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { fetchCVList, deleteCV, startAnalysis } from '../api/client'
+import { useState } from 'react'
+import { fetchCVList, deleteCV, startAnalysis, updateCV } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
-import { ArrowLeftIcon, FileTextIcon, Trash2Icon, RefreshCwIcon, ChevronRightIcon } from 'lucide-react'
+import { ArrowLeftIcon, FileTextIcon, Trash2Icon, RefreshCwIcon, ChevronRightIcon, ArchiveRestoreIcon } from 'lucide-react'
 
 export default function CVHistory() {
   const qc = useQueryClient()
-  const { data: cvs = [], isLoading } = useQuery({ queryKey: ['cvs'], queryFn: fetchCVList })
+  const { data: allCvs = [], isLoading } = useQuery({ queryKey: ['cvs'], queryFn: () => fetchCVList() })
+  const cvs = allCvs.filter(c => !c.archived)
+  const { data: archivedCvs = [] } = useQuery({ queryKey: ['cvs', 'archived'], queryFn: () => fetchCVList(true) })
+  const [restoreError, setRestoreError] = useState<string | null>(null)
 
+  const restore = useMutation({
+    mutationFn: (cvId: number) => updateCV(cvId, { archived: false }),
+    onMutate: () => setRestoreError(null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cvs'] }),
+    onError: (e: any) => setRestoreError(e?.response?.data?.detail ?? 'Ripristino non riuscito'),
+  })
+
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const remove = useMutation({
     mutationFn: (cvId: number) => deleteCV(cvId),
+    onMutate: () => setDeleteError(null),
+    onError: (e: any) => {
+      const d = e?.response?.data?.detail
+      setDeleteError(typeof d === 'string' ? d : 'Eliminazione non riuscita')
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cvs'] })
       qc.invalidateQueries({ queryKey: ['applications'] })
@@ -32,6 +49,7 @@ export default function CVHistory() {
       </Link>
 
       <h1 className="text-2xl font-bold text-gray-900 mb-1">Storico caricamenti</h1>
+      {deleteError && <p className="mb-2 text-sm text-red-600">{deleteError}</p>}
       <p className="text-gray-500 text-sm mb-6">Le versioni precedenti del tuo CV. La più recente è quella attiva.</p>
 
       <div className="bg-white rounded-xl border border-gray-200">
@@ -91,6 +109,24 @@ export default function CVHistory() {
           </ul>
         )}
       </div>
+
+      {archivedCvs.length > 0 && (
+        <div className="mt-8">
+          <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">In storico</h2>
+          <ul className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+            {[...archivedCvs].sort((a, b) => b.id - a.id).map(cv => (
+              <li key={cv.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0 text-sm text-gray-800 truncate">{cv.filename}</div>
+                <button onClick={() => restore.mutate(cv.id)} disabled={restore.isPending}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-60 shrink-0">
+                  <ArchiveRestoreIcon size={12} /> Ripristina
+                </button>
+              </li>
+            ))}
+          </ul>
+          {restoreError && <p className="mt-2 text-sm text-red-600">{restoreError}</p>}
+        </div>
+      )}
     </div>
   )
 }
