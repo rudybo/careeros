@@ -27,6 +27,15 @@ class CVRepository:
         await self._session.refresh(cv)
         return cv
 
+    async def update_raw_text(self, cv_id: int, raw_text: str) -> CV | None:
+        cv = await self.get_by_id(cv_id)
+        if cv is None:
+            return None
+        cv.raw_text = raw_text
+        await self._session.commit()
+        await self._session.refresh(cv)
+        return cv
+
     async def update_status(self, cv_id: int, status: str) -> None:
         cv = await self.get_by_id(cv_id)
         if cv:

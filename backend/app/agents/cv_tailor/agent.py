@@ -1,5 +1,7 @@
+import difflib
 import logging
 import re
+import unicodedata
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -12,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (Path(__file__).parent / "prompt.md").read_text(encoding="utf-8")
 _MAX_JOB_CHARS = 6000
-_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9+#.\-]*[A-Za-z0-9+#]|[A-Za-z0-9]")
+_MAX_HIGHLIGHTS = 6
+_FALLBACK_HIGHLIGHTS = 3
+_SNAP_RATIO = 0.6
+_MAX_PROJECTS = 2
 
 
 class CVTailorError(Exception):
@@ -23,35 +28,61 @@ def _norm(s: str | None) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
 
 
-def _cv_text(cv: ParsedCV) -> str:
-    parts = [cv.summary or "", *cv.skills, *cv.certifications]
-    for e in cv.work_experience:
-        parts += [e.company or "", e.role or "", e.description or ""]
-    return _norm(" ".join(parts))
+def _snap_key(s: str | None) -> str:
+    flat = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"\s+", " ", flat).strip(" .,;:!?-*\"'()[]")
 
 
-def _tech_tokens(text: str) -> set[str]:
-    """Token 'tecnici': maiuscola non iniziale di frase, cifre/#/+/., sigle maiuscole."""
-    tokens: set[str] = set()
-    for m in _TOKEN_RE.finditer(text):
-        tok = m.group(0)
-        before = text[: m.start()].rstrip()
-        sentence_start = not before or before[-1] in ".!?:\n•-*"
-        has_inner_upper = any(c.isupper() for c in tok[1:])
-        has_symbol_digit = any(c.isdigit() or c in "+#." for c in tok)
-        is_acronym = len(tok) >= 2 and tok.isupper()
-        capitalized_mid = tok[0].isupper() and not sentence_start
-        if has_inner_upper or has_symbol_digit or is_acronym or capitalized_mid:
-            tokens.add(tok.lower().rstrip("."))
-    return tokens
+def _snap(candidate: str | None, base_items: list[str], used: set[int] | None = None) -> str | None:
+    """Testo del base più simile al candidato (ratio >= soglia), sempre verbatim; None se nessuno."""
+    key = _snap_key(candidate)
+    if not key:
+        return None
+    best_i, best_r = -1, 0.0
+    for i, item in enumerate(base_items):
+        r = difflib.SequenceMatcher(None, key, _snap_key(item)).ratio()
+        if r > best_r:
+            best_i, best_r = i, r
+    if best_i < 0 or best_r < _SNAP_RATIO or (used is not None and best_i in used):
+        return None
+    if used is not None:
+        used.add(best_i)
+    return base_items[best_i]
 
 
-def _base_tokens(base_text: str) -> set[str]:
-    return {m.group(0).lower().rstrip(".") for m in _TOKEN_RE.finditer(base_text)}
+def _filter_highlights(candidates: list[str], b: WorkExperience) -> list[str]:
+    used: set[int] = set()
+    kept: list[str] = []
+    for h in candidates:
+        snapped = _snap(h, b.highlights, used)
+        if snapped is None:
+            logger.warning("CV Tailor: highlight non presente nel base scartato (%s): %.80s", b.company, h)
+            continue
+        kept.append(snapped)
+    kept = kept[:_MAX_HIGHLIGHTS]
+    return kept or list(b.highlights[:_FALLBACK_HIGHLIGHTS])
 
 
-def _is_clean(candidate: str | None, base_tokens: set[str]) -> bool:
-    return _tech_tokens(candidate or "") <= base_tokens
+def _filter_projects(candidates: list[str], base: ParsedCV) -> list[str]:
+    used: set[int] = set()
+    kept: list[str] = []
+    for p in candidates:
+        snapped = _snap(p, base.projects, used)
+        if snapped is None:
+            logger.warning("CV Tailor: progetto non presente nel base scartato: %.80s", p)
+            continue
+        kept.append(snapped)
+    return kept[:_MAX_PROJECTS]
+
+
+def _canonical(items: list[str], base_items: list[str]) -> list[str]:
+    by_norm = {_norm(b): b for b in reversed(base_items)}
+    out: list[str] = []
+    for i in items:
+        c = by_norm.get(_norm(i))
+        if c is not None and c not in out:
+            out.append(c)
+    return out
 
 
 def _find_base_exp(exp: WorkExperience, base: ParsedCV) -> WorkExperience | None:
@@ -62,9 +93,7 @@ def _find_base_exp(exp: WorkExperience, base: ParsedCV) -> WorkExperience | None
 
 
 def enforce_base_facts(tailored: ParsedCV, base: ParsedCV) -> ParsedCV:
-    base_tokens = _base_tokens(_cv_text(base))
-
-    exps: list[WorkExperience] = []
+    kept_by_key: dict[tuple[str, str], WorkExperience] = {}
     seen: set[tuple[str, str]] = set()
     for exp in tailored.work_experience:
         b = _find_base_exp(exp, base)
@@ -73,32 +102,49 @@ def enforce_base_facts(tailored: ParsedCV, base: ParsedCV) -> ParsedCV:
             logger.warning("CV Tailor: esperienza non verificabile scartata: %s @ %s", exp.role, exp.company)
             continue
         seen.add(key)
-        desc = exp.description if _is_clean(exp.description, base_tokens) else b.description
-        if desc != exp.description:
-            logger.warning("CV Tailor: descrizione con tecnologie non presenti nel base, uso quella originale (%s)", b.company)
-        exps.append(WorkExperience(company=b.company, role=b.role, start_date=b.start_date,
-                                   end_date=b.end_date, description=desc))
-    if not exps:
+        # Mai testo dell'LLM: la descrizione è quella del base oppure vuota (omessa).
+        desc = b.description if (exp.description or "").strip() else None
+        kept_by_key[(_norm(b.company), _norm(b.role))] = WorkExperience(
+            company=b.company, role=b.role, start_date=b.start_date, end_date=b.end_date, description=desc,
+            highlights=_filter_highlights(exp.highlights, b))
+    if not kept_by_key:
         raise CVTailorError("Il CV adattato non contiene esperienze verificabili.")
 
-    base_skills = {_norm(s) for s in base.skills}
-    base_certs = {_norm(c) for c in base.certifications}
-    summary = tailored.summary if _is_clean(tailored.summary, base_tokens) else base.summary
+    # Lo storico non si perde mai: tutte le esperienze del base, nell'ordine del base.
+    exps: list[WorkExperience] = []
+    for b in base.work_experience:
+        kept = kept_by_key.get((_norm(b.company), _norm(b.role)))
+        if kept is None:
+            d = (b.description or "").strip()
+            kept = WorkExperience(company=b.company, role=b.role, start_date=b.start_date, end_date=b.end_date,
+                                  description=d if d and len(d) <= 120 and "\n" not in d else None)
+        exps.append(kept)
+
+    summary = base.summary if (tailored.summary or "").strip() else None
+
+    # Lista vuota dall'LLM = progetti omessi di proposito (annuncio non tecnico) -> resta vuota.
+    # Chiave "projects" assente dall'output -> fallback al primo progetto del base.
+    if "projects" in tailored.model_fields_set:
+        projects = _filter_projects(tailored.projects, base)
+    else:
+        projects = list(base.projects[:1])
 
     return ParsedCV(
         full_name=base.full_name, email=base.email, phone=base.phone, location=base.location,
+        linkedin=base.linkedin,
         summary=summary,
-        skills=[s for s in tailored.skills if _norm(s) in base_skills],
+        skills=_canonical(tailored.skills, base.skills),
         work_experience=exps,
         education=base.education,
         languages=base.languages,
-        certifications=[c for c in tailored.certifications if _norm(c) in base_certs],
+        certifications=_canonical(tailored.certifications, base.certifications),
+        projects=projects,
     )
 
 
 async def tailor(base: ParsedCV, job_text: str) -> ParsedCV:
     user_message = (
-        f"BASE CV (JSON):\n{base.model_dump_json(exclude_none=True)}\n\n"
+        f"BASE CV (JSON):\n{base.model_dump_json(exclude_none=True, exclude_defaults=True)}\n\n"
         f"JOB POSTING:\n{job_text[:_MAX_JOB_CHARS]}"
     )
     logger.info("CV Tailor: avvio per %s — annuncio %d chars", base.full_name, len(job_text))

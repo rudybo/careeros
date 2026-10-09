@@ -9,6 +9,10 @@ class WorkExperience(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     description: str | None = None
+    highlights: list[str] = Field(
+        default_factory=list,
+        description="Risultati/progetti/bullet del ruolo, uno per stringa, testo verbatim",
+    )
 
 
 class Education(BaseModel):
@@ -23,12 +27,17 @@ class ParsedCV(BaseModel):
     email: str | None = None
     phone: str | None = None
     location: str | None = None
+    linkedin: str | None = None
     summary: str | None = Field(None, description="Sommario professionale o obiettivo")
     skills: list[str] = Field(default_factory=list)
     work_experience: list[WorkExperience] = Field(default_factory=list)
     education: list[Education] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
+    projects: list[str] = Field(
+        default_factory=list,
+        description="Progetti personali, uno per stringa (nome + descrizione), testo verbatim",
+    )
 
 
 class CVUploadResponse(BaseModel):
